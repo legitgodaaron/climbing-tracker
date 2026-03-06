@@ -336,6 +336,55 @@
     /* ── Empty state ─────────────────────────────────────────── */
     .empty-state { text-align: center; color: var(--muted); padding: 3.5rem 1rem; }
     .empty-state a { color: var(--accent); text-decoration: none; }
+
+    /* ── Session list ───────────────────────────────────────────────── */
+    .badge-active {
+      display: inline-block;
+      background: rgba(124,108,255,0.18);
+      color: var(--accent);
+      border-radius: 999px;
+      padding: 0.1rem 0.55rem;
+      font-size: 0.75rem;
+      font-weight: 700;
+    }
+    .session-list { display: flex; flex-direction: column; gap: 0.6rem; }
+    .session-card {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1rem 1.25rem;
+      text-decoration: none;
+      color: var(--text);
+      transition: border-color 0.15s;
+    }
+    .session-card:hover { border-color: var(--accent); }
+    .session-gym  { font-weight: 700; font-size: 1rem; }
+    .session-meta { color: var(--muted); font-size: 0.8rem; margin-top: 0.2rem; }
+    .session-card-stats {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0 1.25rem;
+      text-align: right;
+      flex-shrink: 0;
+    }
+    .stat-val { font-size: 1.15rem; font-weight: 800; }
+    .stat-lbl { font-size: 0.72rem; color: var(--muted); }
+
+    /* ── Session detail summary ──────────────────────────────────── */
+    .session-summary-bar { display: flex; gap: 1rem; flex-wrap: wrap; }
+    .summ-stat {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 0.75rem 1.25rem;
+      min-width: 7rem;
+    }
+    .summ-val { font-size: 1.4rem; font-weight: 800; }
+    .summ-lbl { color: var(--muted); font-size: 0.75rem; margin-top: 0.1rem; }
   </style>
 </head>
 <body>
@@ -344,6 +393,7 @@
     <a href="/"            class="nav-link {% if request.endpoint == 'index'      %}active{% endif %}">Home</a>
     <a href="/log"         class="nav-link {% if request.endpoint == 'log_climb'  %}active{% endif %}">Log Climb</a>
     <a href="/leaderboard" class="nav-link {% if request.endpoint == 'leaderboard'%}active{% endif %}">Leaderboard</a>
+    <a href="/sessions"    class="nav-link {% if request.endpoint in ('sessions','session_detail') %}active{% endif %}">Sessions</a>
   </nav>
   <main>
     {% block content %}{% endblock %}

@@ -45,18 +45,31 @@ def init_db():
             name       TEXT    NOT NULL UNIQUE,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
+        CREATE TABLE IF NOT EXISTS sessions (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            gym_name   TEXT    NOT NULL DEFAULT 'The Wall',
+            notes      TEXT    NOT NULL DEFAULT '',
+            started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            ended_at   TIMESTAMP
+        );
         CREATE TABLE IF NOT EXISTS climbs (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id     INTEGER NOT NULL,
+            session_id  INTEGER,
             grade_color TEXT    NOT NULL,
             climb_type  TEXT    NOT NULL,
             style       TEXT    NOT NULL,
             holds       TEXT    NOT NULL,
             points      INTEGER NOT NULL,
             date        TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (user_id) REFERENCES users(id)
+            FOREIGN KEY (user_id)    REFERENCES users(id),
+            FOREIGN KEY (session_id) REFERENCES sessions(id)
         );
     ''')
+    # Migrate: add session_id to existing climbs table if absent
+    cols = [row[1] for row in conn.execute('PRAGMA table_info(climbs)')]
+    if 'session_id' not in cols:
+        conn.execute('ALTER TABLE climbs ADD COLUMN session_id INTEGER REFERENCES sessions(id)')
     conn.commit()
     conn.close()
 
@@ -78,9 +91,10 @@ def index():
     conn   = get_db()
     users  = conn.execute('SELECT * FROM users ORDER BY name').fetchall()
     recent = conn.execute('''
-        SELECT c.*, u.name AS climber
+        SELECT c.*, u.name AS climber, s.gym_name AS session_gym
         FROM   climbs c
         JOIN   users  u ON c.user_id = u.id
+        LEFT   JOIN sessions s ON c.session_id = s.id
         ORDER  BY c.date DESC
         LIMIT  20
     ''').fetchall()
@@ -106,6 +120,9 @@ def add_user():
 def log_climb():
     conn  = get_db()
     users = conn.execute('SELECT * FROM users ORDER BY name').fetchall()
+    active_sessions = conn.execute(
+        'SELECT * FROM sessions WHERE ended_at IS NULL ORDER BY started_at DESC'
+    ).fetchall()
     conn.close()
 
     if request.method == 'POST':
@@ -123,6 +140,13 @@ def log_climb():
         style = request.form.get('style', '')
         holds = request.form.getlist('holds')
 
+        # Optional session
+        raw_sid = request.form.get('session_id', '').strip()
+        try:
+            session_id = int(raw_sid) if raw_sid else None
+        except ValueError:
+            session_id = None
+
         if not error:
             if grade not in GRADE_MAP:
                 error = 'Please select a grade.'
@@ -136,19 +160,36 @@ def log_climb():
                 error = 'Invalid hold type submitted.'
 
         if error:
-            return render_template('log.html', users=users, grades=GRADE_COLORS, error=error)
+            return render_template('log.html', users=users, grades=GRADE_COLORS,
+                                   active_sessions=active_sessions, error=error)
+
+        # Verify session is still open
+        if session_id is not None:
+            conn = get_db()
+            valid = conn.execute(
+                'SELECT id FROM sessions WHERE id = ? AND ended_at IS NULL', (session_id,)
+            ).fetchone()
+            conn.close()
+            if valid is None:
+                session_id = None
 
         points = GRADE_MAP[grade]['points']
         conn = get_db()
         conn.execute(
-            'INSERT INTO climbs (user_id, grade_color, climb_type, style, holds, points) VALUES (?,?,?,?,?,?)',
-            (user_id, grade, ctype, style, json.dumps(holds), points)
+            'INSERT INTO climbs (user_id, session_id, grade_color, climb_type, style, holds, points) '
+            'VALUES (?,?,?,?,?,?,?)',
+            (user_id, session_id, grade, ctype, style, json.dumps(holds), points)
         )
         conn.commit()
         conn.close()
+        if session_id:
+            return redirect(url_for('session_detail', session_id=session_id))
         return redirect(url_for('index'))
 
-    return render_template('log.html', users=users, grades=GRADE_COLORS)
+    selected_session_id = request.args.get('session_id', type=int)
+    return render_template('log.html', users=users, grades=GRADE_COLORS,
+                           active_sessions=active_sessions,
+                           selected_session_id=selected_session_id)
 
 
 @app.route('/leaderboard')
@@ -194,6 +235,80 @@ def leaderboard():
                            grades=GRADE_COLORS,
                            grade_map=GRADE_MAP,
                            sort_by=sort_by)
+
+
+# ── Session routes ───────────────────────────────────────────────────────────
+
+@app.route('/sessions')
+def sessions():
+    conn = get_db()
+    rows = conn.execute('''
+        SELECT s.*,
+               COUNT(c.id)                AS climb_count,
+               COALESCE(SUM(c.points), 0) AS total_points
+        FROM   sessions s
+        LEFT   JOIN climbs c ON c.session_id = s.id
+        GROUP  BY s.id
+        ORDER  BY s.started_at DESC
+    ''').fetchall()
+    conn.close()
+    return render_template('sessions.html', sessions=rows)
+
+
+@app.route('/start_session', methods=['POST'])
+def start_session():
+    gym   = request.form.get('gym_name', '').strip()[:100] or 'The Wall'
+    notes = request.form.get('notes', '').strip()[:500]
+    conn  = get_db()
+    cur   = conn.execute('INSERT INTO sessions (gym_name, notes) VALUES (?, ?)', (gym, notes))
+    sid   = cur.lastrowid
+    conn.commit()
+    conn.close()
+    return redirect(url_for('session_detail', session_id=sid))
+
+
+@app.route('/session/<int:session_id>')
+def session_detail(session_id):
+    conn    = get_db()
+    session = conn.execute('SELECT * FROM sessions WHERE id = ?', (session_id,)).fetchone()
+    if session is None:
+        conn.close()
+        return redirect(url_for('sessions'))
+    climbs = conn.execute('''
+        SELECT c.*, u.name AS climber
+        FROM   climbs c
+        JOIN   users  u ON c.user_id = u.id
+        WHERE  c.session_id = ?
+        ORDER  BY c.date ASC
+    ''', (session_id,)).fetchall()
+    conn.close()
+    climber_stats = {}
+    total_points  = 0
+    for c in climbs:
+        total_points += c['points']
+        name = c['climber']
+        if name not in climber_stats:
+            climber_stats[name] = {'total_points': 0, 'total_climbs': 0}
+        climber_stats[name]['total_points'] += c['points']
+        climber_stats[name]['total_climbs']  += 1
+    return render_template('session.html',
+                           session=session,
+                           climbs=climbs,
+                           climber_stats=climber_stats,
+                           total_points=total_points,
+                           grade_map=GRADE_MAP)
+
+
+@app.route('/end_session/<int:session_id>', methods=['POST'])
+def end_session(session_id):
+    conn = get_db()
+    conn.execute(
+        'UPDATE sessions SET ended_at = CURRENT_TIMESTAMP WHERE id = ? AND ended_at IS NULL',
+        (session_id,)
+    )
+    conn.commit()
+    conn.close()
+    return redirect(url_for('session_detail', session_id=session_id))
 
 
 # ── Startup ───────────────────────────────────────────────────────────────────

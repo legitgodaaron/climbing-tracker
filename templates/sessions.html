@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}Sessions — ClimbTracker{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1>Sessions</h1>
+  <button class="btn btn-primary"
+          onclick="document.getElementById('modal-session').classList.add('open')">
+    + Start Session
+  </button>
+</div>
+
+{% if sessions %}
+<div class="session-list">
+  {% for s in sessions %}
+  <a href="/session/{{ s.id }}" class="session-card">
+    <div class="session-card-body">
+      <div class="session-gym">{{ s.gym_name }}</div>
+      <div class="session-meta">
+        {{ s.started_at[:10] }}
+        {% if s.ended_at %}
+          &middot; Ended {{ s.ended_at[:10] }}
+        {% else %}
+          &middot; <span class="badge-active">In Progress</span>
+        {% endif %}
+        {% if s.notes %}&middot; {{ s.notes[:80] }}{% if s.notes|length > 80 %}&hellip;{% endif %}{% endif %}
+      </div>
+    </div>
+    <div class="session-card-stats">
+      <div class="stat-val">{{ s.climb_count }}</div>
+      <div class="stat-lbl">climbs</div>
+      <div class="stat-val" style="color:var(--accent);">{{ s.total_points }}</div>
+      <div class="stat-lbl">pts</div>
+    </div>
+  </a>
+  {% endfor %}
+</div>
+{% else %}
+<div class="card empty-state">
+  No sessions yet.
+  <br>
+  <button class="btn btn-primary" style="margin-top:.75rem;"
+          onclick="document.getElementById('modal-session').classList.add('open')">
+    Start the first one!
+  </button>
+</div>
+{% endif %}
+
+<!-- Start Session Modal -->
+<div class="overlay" id="modal-session"
+     onclick="if(event.target===this)this.classList.remove('open')">
+  <div class="modal-box">
+    <h2>Start a Session</h2>
+    <form method="POST" action="/start_session">
+      <div class="form-group">
+        <label class="field-label" for="gym-name">Gym</label>
+        <input type="text" name="gym_name" id="gym-name"
+               placeholder="e.g. The Wall" maxlength="100" autocomplete="off">
+      </div>
+      <div class="form-group">
+        <label class="field-label" for="sess-notes">Notes <span class="note">(optional)</span></label>
+        <input type="text" name="notes" id="sess-notes"
+               placeholder="e.g. feeling strong today" maxlength="500" autocomplete="off">
+      </div>
+      <div style="display:flex; gap:.5rem; justify-content:flex-end;">
+        <button type="button" class="btn btn-secondary"
+                onclick="document.getElementById('modal-session').classList.remove('open')">
+          Cancel
+        </button>
+        <button type="submit" class="btn btn-primary">Start</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% endblock %}

@@ -28,6 +28,7 @@
         &ensp;{{ c.climb_type | capitalize }}
         &middot; {{ c.style | capitalize }}
         &middot; {{ c.holds | from_json | join(', ') }}
+        {% if c.session_gym %}&ensp;<span style="color:var(--accent); opacity:.7;">&#9673; {{ c.session_gym }}</span>{% endif %}
       </div>
     </div>
     <div class="feed-pts">+{{ c.points }}&thinsp;pts</div>

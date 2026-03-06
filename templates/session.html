@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}{{ session.gym_name }} — ClimbTracker{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <div>
+    <h1>{{ session.gym_name }}</h1>
+    <div style="color:var(--muted); font-size:.85rem; margin-top:.25rem;">
+      {{ session.started_at[:10] }}
+      {% if session.ended_at %}
+        &middot; Ended {{ session.ended_at[:10] }}
+      {% else %}
+        &middot; <span class="badge-active">In Progress</span>
+      {% endif %}
+      {% if session.notes %}&middot; {{ session.notes }}{% endif %}
+    </div>
+  </div>
+  <div style="display:flex; gap:.5rem; align-items:center; flex-wrap:wrap;">
+    {% if not session.ended_at %}
+    <a href="/log?session_id={{ session.id }}" class="btn btn-primary">+ Log Climb</a>
+    <form method="POST" action="/end_session/{{ session.id }}" style="margin:0;">
+      <button type="submit" class="btn btn-secondary">End Session</button>
+    </form>
+    {% endif %}
+    <a href="/sessions" class="btn btn-secondary">&larr; Sessions</a>
+  </div>
+</div>
+
+<!-- Summary bar -->
+<div class="session-summary-bar">
+  <div class="summ-stat">
+    <div class="summ-val">{{ climbs|length }}</div>
+    <div class="summ-lbl">climbs</div>
+  </div>
+  <div class="summ-stat">
+    <div class="summ-val" style="color:var(--accent);">{{ total_points }}</div>
+    <div class="summ-lbl">points</div>
+  </div>
+  {% for name, stats in climber_stats.items() %}
+  <div class="summ-stat">
+    <div class="summ-val">{{ stats.total_climbs }}</div>
+    <div class="summ-lbl">{{ name }}</div>
+  </div>
+  {% endfor %}
+</div>
+
+{% if climbs %}
+<div class="card" style="margin-top:1.25rem;">
+  {% for c in climbs %}
+  {% set g = grade_map[c.grade_color] %}
+  <div class="feed-item">
+    <div class="feed-dot" style="background:{{ g.hex }};"></div>
+    <div class="feed-body">
+      <div class="feed-who">{{ c.climber }}</div>
+      <div class="feed-meta">
+        <span class="gbadge"
+              style="background:{{ g.hex }}22; color:{{ g.hex }}; border-color:{{ g.hex }}44;">
+          <span class="gbadge-dot" style="background:{{ g.hex }};"></span>
+          {{ g.label }} &middot; {{ g.grade }}
+        </span>
+        &ensp;{{ c.climb_type | capitalize }}
+        &middot; {{ c.style | capitalize }}
+        &middot; {{ c.holds | from_json | join(', ') }}
+      </div>
+    </div>
+    <div class="feed-pts">+{{ c.points }}&thinsp;pts</div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="card empty-state" style="margin-top:1.25rem;">
+  No climbs logged in this session yet.
+  {% if not session.ended_at %}
+  <br><a href="/log?session_id={{ session.id }}">Log one now!</a>
+  {% endif %}
+</div>
+{% endif %}
+
+{% endblock %}

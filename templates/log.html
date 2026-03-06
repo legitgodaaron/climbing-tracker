@@ -14,6 +14,21 @@
 
   <form method="POST" action="/log">
 
+    <!-- Session (optional) -->
+    {% if active_sessions %}
+    <div class="form-group">
+      <label class="field-label" for="sel-session">Session <span class="note">(optional)</span></label>
+      <select name="session_id" id="sel-session">
+        <option value="">No session</option>
+        {% for s in active_sessions %}
+        <option value="{{ s.id }}" {% if selected_session_id == s.id %}selected{% endif %}>
+          {{ s.gym_name }} &mdash; {{ s.started_at[:10] }}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+    {% endif %}
+
     <!-- Climber -->
     <div class="form-group">
       <label class="field-label" for="sel-user">Climber</label>
