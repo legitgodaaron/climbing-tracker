@@ -372,9 +372,68 @@ def end_session(session_id):
     return redirect(url_for('session_detail', session_id=session_id))
 
 
+# ── Stats route ───────────────────────────────────────────────────────────────
+
+@app.route('/stats')
+def stats():
+    conn = get_db()
+
+    # Record single day: user with most climbs in one calendar day
+    record_day = conn.execute('''
+        SELECT u.name, DATE(c.date) AS day, COUNT(*) AS cnt
+        FROM   climbs c
+        JOIN   users  u ON c.user_id = u.id
+        GROUP  BY c.user_id, DATE(c.date)
+        ORDER  BY cnt DESC
+        LIMIT  1
+    ''').fetchone()
+
+    # Best session haul: user with most points in a single session
+    best_session = conn.execute('''
+        SELECT u.name, s.gym_name, s.started_at,
+               SUM(c.points) AS pts, COUNT(c.id) AS cnt
+        FROM   climbs   c
+        JOIN   users    u ON c.user_id    = u.id
+        JOIN   sessions s ON c.session_id = s.id
+        WHERE  c.session_id IS NOT NULL
+        GROUP  BY c.user_id, c.session_id
+        ORDER  BY pts DESC
+        LIMIT  1
+    ''').fetchone()
+
+    users      = conn.execute('SELECT * FROM users ORDER BY name').fetchall()
+    all_climbs = conn.execute('SELECT * FROM climbs').fetchall()
+    conn.close()
+
+    grade_order = [g['key'] for g in GRADE_COLORS]  # ascending difficulty
+    user_stats  = {
+        u['id']: {'name': u['name'], 'total_climbs': 0,
+                  'total_points': 0, 'best_grade': None}
+        for u in users
+    }
+    for c in all_climbs:
+        uid, color = c['user_id'], c['grade_color']
+        if uid not in user_stats or color not in GRADE_MAP:
+            continue
+        s = user_stats[uid]
+        s['total_climbs'] += 1
+        s['total_points'] += c['points']
+        cur = s['best_grade']
+        if cur is None or grade_order.index(color) > grade_order.index(cur['key']):
+            s['best_grade'] = GRADE_MAP[color]
+
+    user_rows = sorted(user_stats.values(),
+                       key=lambda x: x['total_points'], reverse=True)
+
+    return render_template('stats.html',
+                           record_day=record_day,
+                           best_session=best_session,
+                           user_rows=user_rows)
+
+
 # ── Startup ───────────────────────────────────────────────────────────────────
 
-
+with app.app_context():
     init_db()
 
 if __name__ == '__main__':
