@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Admin Login — ClimbTracker{% endblock %}
+{% block content %}
+
+<div style="max-width:360px; margin:4rem auto;">
+  <div class="card">
+    <h2 style="margin-bottom:1.25rem;">🔒 Admin Login</h2>
+
+    {% if error %}
+    <div class="alert-error">{{ error }}</div>
+    {% endif %}
+
+    <form method="POST" action="/admin/login">
+      <input type="hidden" name="next" value="{{ next }}">
+      <div class="form-group">
+        <label class="field-label" for="apw">Password</label>
+        <input type="password" name="password" id="apw" autofocus required>
+      </div>
+      <div style="display:flex; gap:.5rem; justify-content:flex-end;">
+        <a href="/" class="btn btn-secondary">Cancel</a>
+        <button type="submit" class="btn btn-primary">Login</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% endblock %}

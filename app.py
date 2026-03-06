@@ -1,13 +1,15 @@
 import os
 import json
 import sqlite3
-from flask import Flask, render_template, request, redirect, url_for
+from flask import Flask, render_template, request, redirect, url_for, session as flask_session
 
 app = Flask(__name__)
 # On Render free tier the app root is read-only; /tmp is writable.
 # Locally this falls back to a climbs.db next to app.py.
 _default_db = os.path.join(app.root_path, 'climbs.db')
-DATABASE = os.environ.get('DATABASE_PATH', _default_db)
+DATABASE         = os.environ.get('DATABASE_PATH', _default_db)
+app.secret_key   = os.environ.get('SECRET_KEY', 'dev-secret-change-in-prod')
+ADMIN_PASSWORD   = os.environ.get('ADMIN_PASSWORD', '')
 
 # ── Grade definitions ──────────────────────────────────────────────────────────
 # Points use a progressive scale that meaningfully rewards harder sends.
@@ -72,6 +74,17 @@ def init_db():
         conn.execute('ALTER TABLE climbs ADD COLUMN session_id INTEGER REFERENCES sessions(id)')
     conn.commit()
     conn.close()
+
+
+# ── Admin helpers ────────────────────────────────────────────────────────────
+
+def is_admin():
+    return flask_session.get('is_admin', False)
+
+
+@app.context_processor
+def inject_admin():
+    return {'is_admin': is_admin()}
 
 
 # ── Template helpers ──────────────────────────────────────────────────────────
@@ -235,6 +248,54 @@ def leaderboard():
                            grades=GRADE_COLORS,
                            grade_map=GRADE_MAP,
                            sort_by=sort_by)
+
+
+# ── Admin routes ─────────────────────────────────────────────────────────────
+
+@app.route('/admin/login', methods=['GET', 'POST'])
+def admin_login():
+    error = None
+    if request.method == 'POST':
+        pw = request.form.get('password', '')
+        if ADMIN_PASSWORD and pw == ADMIN_PASSWORD:
+            flask_session['is_admin'] = True
+            next_url = request.form.get('next', '') or url_for('index')
+            return redirect(next_url)
+        error = 'Wrong password.'
+    return render_template('admin_login.html', error=error,
+                           next=request.args.get('next', ''))
+
+
+@app.route('/admin/logout', methods=['POST'])
+def admin_logout():
+    flask_session.pop('is_admin', None)
+    return redirect(url_for('index'))
+
+
+@app.route('/delete_climb/<int:climb_id>', methods=['POST'])
+def delete_climb(climb_id):
+    if not is_admin():
+        return redirect(url_for('admin_login'))
+    conn = get_db()
+    row  = conn.execute('SELECT session_id FROM climbs WHERE id = ?', (climb_id,)).fetchone()
+    conn.execute('DELETE FROM climbs WHERE id = ?', (climb_id,))
+    conn.commit()
+    conn.close()
+    if row and row['session_id']:
+        return redirect(url_for('session_detail', session_id=row['session_id']))
+    return redirect(url_for('index'))
+
+
+@app.route('/delete_session/<int:session_id>', methods=['POST'])
+def delete_session(session_id):
+    if not is_admin():
+        return redirect(url_for('admin_login'))
+    conn = get_db()
+    conn.execute('DELETE FROM climbs   WHERE session_id = ?', (session_id,))
+    conn.execute('DELETE FROM sessions WHERE id = ?',         (session_id,))
+    conn.commit()
+    conn.close()
+    return redirect(url_for('sessions'))
 
 
 # ── Session routes ───────────────────────────────────────────────────────────

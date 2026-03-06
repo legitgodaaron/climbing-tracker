@@ -32,6 +32,14 @@
       </div>
     </div>
     <div class="feed-pts">+{{ c.points }}&thinsp;pts</div>
+    {% if is_admin %}
+    <form method="POST" action="/delete_climb/{{ c.id }}"
+          onsubmit="return confirm('Delete this climb?')"
+          style="margin:0;">
+      <button type="submit" class="btn btn-secondary"
+              style="padding:.2rem .5rem; font-size:.75rem; color:#ff8b82; border-color:rgba(231,76,60,.35);" title="Delete climb">&times;</button>
+    </form>
+    {% endif %}
   </div>
   {% endfor %}
 </div>

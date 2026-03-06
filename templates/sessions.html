@@ -13,7 +13,8 @@
 {% if sessions %}
 <div class="session-list">
   {% for s in sessions %}
-  <a href="/session/{{ s.id }}" class="session-card">
+  <div style="display:flex; align-items:center; gap:.5rem;">
+    <a href="/session/{{ s.id }}" class="session-card" style="flex:1;">
     <div class="session-card-body">
       <div class="session-gym">{{ s.gym_name }}</div>
       <div class="session-meta">
@@ -32,7 +33,16 @@
       <div class="stat-val" style="color:var(--accent);">{{ s.total_points }}</div>
       <div class="stat-lbl">pts</div>
     </div>
-  </a>
+    </a>
+    {% if is_admin %}
+    <form method="POST" action="/delete_session/{{ s.id }}"
+          onsubmit="return confirm('Delete this session and all its climbs? This cannot be undone.')"
+          style="margin:0; flex-shrink:0;">
+      <button type="submit" class="btn btn-secondary"
+              style="color:#ff8b82; border-color:rgba(231,76,60,.35); padding:.45rem .75rem;" title="Delete session">&times;</button>
+    </form>
+    {% endif %}
+  </div>
   {% endfor %}
 </div>
 {% else %}

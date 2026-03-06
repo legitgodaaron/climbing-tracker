@@ -23,6 +23,14 @@
     </form>
     {% endif %}
     <a href="/sessions" class="btn btn-secondary">&larr; Sessions</a>
+    {% if is_admin %}
+    <form method="POST" action="/delete_session/{{ session.id }}"
+          onsubmit="return confirm('Delete this entire session and all its climbs? This cannot be undone.')"
+          style="margin:0;">
+      <button type="submit" class="btn btn-secondary"
+              style="color:#ff8b82; border-color:rgba(231,76,60,.35);">Delete Session</button>
+    </form>
+    {% endif %}
   </div>
 </div>
 
@@ -64,6 +72,14 @@
       </div>
     </div>
     <div class="feed-pts">+{{ c.points }}&thinsp;pts</div>
+    {% if is_admin %}
+    <form method="POST" action="/delete_climb/{{ c.id }}"
+          onsubmit="return confirm('Delete this climb?')"
+          style="margin:0;">
+      <button type="submit" class="btn btn-secondary"
+              style="padding:.2rem .5rem; font-size:.75rem; color:#ff8b82; border-color:rgba(231,76,60,.35);" title="Delete climb">&times;</button>
+    </form>
+    {% endif %}
   </div>
   {% endfor %}
 </div>
