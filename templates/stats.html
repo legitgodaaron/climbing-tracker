@@ -44,6 +44,7 @@
         <th>Total Climbs</th>
         <th>Total Points</th>
         <th>Hardest Grade</th>
+        <th>Flash %</th>
       </tr>
     </thead>
     <tbody>
@@ -64,6 +65,14 @@
           {% else %}
           <span style="color:var(--muted);">—</span>
           {% endif %}
+        </td>
+        <td>
+          {% if row.total_climbs %}
+          <span style="{% if row.flash_pct >= 50 %}color:#FFD700; font-weight:700;{% endif %}">
+            ⚡ {{ row.flash_pct }}%
+          </span>
+          <span style="color:var(--muted); font-size:.8em;">({{ row.flashes }}/{{ row.total_climbs }})</span>
+          {% else %}—{% endif %}
         </td>
       </tr>
       {% endfor %}

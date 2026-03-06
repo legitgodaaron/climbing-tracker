@@ -63,6 +63,8 @@ def init_db():
             style       TEXT    NOT NULL,
             holds       TEXT    NOT NULL,
             points      INTEGER NOT NULL,
+            flashed     INTEGER NOT NULL DEFAULT 0,
+            attempts    INTEGER NOT NULL DEFAULT 1,
             date        TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (user_id)    REFERENCES users(id),
             FOREIGN KEY (session_id) REFERENCES sessions(id)
@@ -72,6 +74,10 @@ def init_db():
     cols = [row[1] for row in conn.execute('PRAGMA table_info(climbs)')]
     if 'session_id' not in cols:
         conn.execute('ALTER TABLE climbs ADD COLUMN session_id INTEGER REFERENCES sessions(id)')
+    if 'flashed' not in cols:
+        conn.execute('ALTER TABLE climbs ADD COLUMN flashed INTEGER NOT NULL DEFAULT 0')
+    if 'attempts' not in cols:
+        conn.execute('ALTER TABLE climbs ADD COLUMN attempts INTEGER NOT NULL DEFAULT 1')
     conn.commit()
     conn.close()
 
@@ -152,6 +158,13 @@ def log_climb():
         ctype = request.form.get('climb_type', '')
         style = request.form.get('style', '')
         holds = request.form.getlist('holds')
+        flashed  = 1 if request.form.get('flashed') == '1' else 0
+        try:
+            attempts = max(1, int(request.form.get('attempts', 1)))
+        except (ValueError, TypeError):
+            attempts = 1
+        if flashed:
+            attempts = 1  # a flash is always 1 attempt
 
         # Optional session
         raw_sid = request.form.get('session_id', '').strip()
@@ -189,9 +202,9 @@ def log_climb():
         points = GRADE_MAP[grade]['points']
         conn = get_db()
         conn.execute(
-            'INSERT INTO climbs (user_id, session_id, grade_color, climb_type, style, holds, points) '
-            'VALUES (?,?,?,?,?,?,?)',
-            (user_id, session_id, grade, ctype, style, json.dumps(holds), points)
+            'INSERT INTO climbs (user_id, session_id, grade_color, climb_type, style, holds, points, flashed, attempts) '
+            'VALUES (?,?,?,?,?,?,?,?,?)',
+            (user_id, session_id, grade, ctype, style, json.dumps(holds), points, flashed, attempts)
         )
         conn.commit()
         conn.close()
@@ -408,7 +421,8 @@ def stats():
     grade_order = [g['key'] for g in GRADE_COLORS]  # ascending difficulty
     user_stats  = {
         u['id']: {'name': u['name'], 'total_climbs': 0,
-                  'total_points': 0, 'best_grade': None}
+                  'total_points': 0, 'best_grade': None,
+                  'flashes': 0}
         for u in users
     }
     for c in all_climbs:
@@ -418,9 +432,14 @@ def stats():
         s = user_stats[uid]
         s['total_climbs'] += 1
         s['total_points'] += c['points']
+        if c['flashed']:
+            s['flashes'] += 1
         cur = s['best_grade']
         if cur is None or grade_order.index(color) > grade_order.index(cur['key']):
             s['best_grade'] = GRADE_MAP[color]
+
+    for s in user_stats.values():
+        s['flash_pct'] = round(100 * s['flashes'] / s['total_climbs']) if s['total_climbs'] else 0
 
     user_rows = sorted(user_stats.values(),
                        key=lambda x: x['total_points'], reverse=True)

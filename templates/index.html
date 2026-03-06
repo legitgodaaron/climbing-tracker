@@ -28,6 +28,7 @@
         &ensp;{{ c.climb_type | capitalize }}
         &middot; {{ c.style | capitalize }}
         &middot; {{ c.holds | from_json | join(', ') }}
+        {% if c.flashed %}&ensp;<span style="color:#FFD700; font-size:.85em;" title="Flashed!">⚡ Flash</span>{% elif c.attempts > 1 %}&ensp;<span style="color:var(--muted); font-size:.82em;">{{ c.attempts }} tries</span>{% endif %}
         {% if c.session_gym %}&ensp;<span style="color:var(--accent); opacity:.7;">&#9673; {{ c.session_gym }}</span>{% endif %}
       </div>
     </div>

@@ -83,6 +83,30 @@
       </div>
     </div>
 
+    <!-- Attempts + Flash -->
+    <div class="two-col">
+      <div class="form-group">
+        <label class="field-label" for="attempts-input">Attempts</label>
+        <div style="display:flex; align-items:center; gap:.6rem;">
+          <button type="button" class="btn btn-secondary" id="btn-minus"
+                  style="padding:.4rem .75rem; font-size:1.1rem; line-height:1;">−</button>
+          <input type="number" name="attempts" id="attempts-input"
+                 value="1" min="1" max="99"
+                 style="width:4rem; text-align:center; padding:.5rem;">
+          <button type="button" class="btn btn-secondary" id="btn-plus"
+                  style="padding:.4rem .75rem; font-size:1.1rem; line-height:1;">+</button>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="field-label">Flash?</label>
+        <label class="opt-card" id="flash-card" style="margin-top:.1rem;">
+          <input type="checkbox" name="flashed" value="1" id="flash-check">
+          ⚡ Sent first try
+        </label>
+      </div>
+    </div>
+
     <!-- Holds -->
     <div class="form-group">
       <label class="field-label">
@@ -121,6 +145,35 @@
   sel.closest('form').addEventListener('submit', function() {
     if (sel.value) localStorage.setItem(KEY, sel.value);
   });
+
+  // Attempts +/- buttons
+  const attInput = document.getElementById('attempts-input');
+  document.getElementById('btn-minus').addEventListener('click', () => {
+    if (parseInt(attInput.value) > 1) attInput.value = parseInt(attInput.value) - 1;
+    syncFlash();
+  });
+  document.getElementById('btn-plus').addEventListener('click', () => {
+    attInput.value = parseInt(attInput.value) + 1;
+    syncFlash();
+  });
+  attInput.addEventListener('input', syncFlash);
+
+  // Flash checkbox syncs attempts to 1 and disables the input
+  const flashCheck = document.getElementById('flash-check');
+  flashCheck.addEventListener('change', syncFlash);
+
+  function syncFlash() {
+    if (flashCheck.checked) {
+      attInput.value = 1;
+      attInput.disabled = true;
+      document.getElementById('btn-minus').disabled = true;
+      document.getElementById('btn-plus').disabled  = true;
+    } else {
+      attInput.disabled = false;
+      document.getElementById('btn-minus').disabled = false;
+      document.getElementById('btn-plus').disabled  = false;
+    }
+  }
 </script>
 
 {% endblock %}
