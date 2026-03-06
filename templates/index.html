@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}Home — ClimbTracker{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1>Recent Climbs</h1>
+  <div style="display:flex; gap:.5rem;">
+    <button class="btn btn-secondary" onclick="document.getElementById('modal-user').classList.add('open')">
+      + Climber
+    </button>
+    <a href="/log" class="btn btn-primary">Log Climb</a>
+  </div>
+</div>
+
+{% if recent %}
+<div class="card">
+  {% for c in recent %}
+  {% set g = grade_map[c.grade_color] %}
+  <div class="feed-item">
+    <div class="feed-dot" style="background:{{ g.hex }};"></div>
+    <div class="feed-body">
+      <div class="feed-who">{{ c.climber }}</div>
+      <div class="feed-meta">
+        <span class="gbadge" style="background:{{ g.hex }}22; color:{{ g.hex }}; border-color:{{ g.hex }}44;">
+          <span class="gbadge-dot" style="background:{{ g.hex }};"></span>
+          {{ g.label }} &middot; {{ g.grade }}
+        </span>
+        &ensp;{{ c.climb_type | capitalize }}
+        &middot; {{ c.style | capitalize }}
+        &middot; {{ c.holds | from_json | join(', ') }}
+      </div>
+    </div>
+    <div class="feed-pts">+{{ c.points }}&thinsp;pts</div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="card empty-state">
+  No climbs logged yet. <a href="/log">Log the first one!</a>
+</div>
+{% endif %}
+
+<!-- Add Climber Modal -->
+<div class="overlay" id="modal-user" onclick="if(event.target===this)this.classList.remove('open')">
+  <div class="modal-box">
+    <h2>Add Climber</h2>
+    <form method="POST" action="/add_user">
+      <div class="form-group">
+        <label class="field-label" for="uname">Name</label>
+        <input type="text" name="name" id="uname"
+               placeholder="e.g. Alex Honnold"
+               required autocomplete="off" maxlength="50">
+      </div>
+      <div style="display:flex; gap:.5rem; justify-content:flex-end;">
+        <button type="button" class="btn btn-secondary"
+                onclick="document.getElementById('modal-user').classList.remove('open')">
+          Cancel
+        </button>
+        <button type="submit" class="btn btn-primary">Add</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% endblock %}

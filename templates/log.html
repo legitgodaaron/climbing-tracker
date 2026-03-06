@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block title %}Log Climb — ClimbTracker{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1>Log a Climb</h1>
+  <a href="/" class="btn btn-secondary">← Back</a>
+</div>
+
+<div class="card" style="max-width:640px; margin:0 auto;">
+  {% if error %}
+  <div class="alert-error">{{ error }}</div>
+  {% endif %}
+
+  <form method="POST" action="/log">
+
+    <!-- Climber -->
+    <div class="form-group">
+      <label class="field-label" for="sel-user">Climber</label>
+      <select name="user_id" id="sel-user" required>
+        <option value="" disabled selected>Select climber…</option>
+        {% for u in users %}
+        <option value="{{ u.id }}">{{ u.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <!-- Grade -->
+    <div class="form-group">
+      <label class="field-label">Grade <span class="note">(Tag Colour)</span></label>
+      <div class="grade-grid">
+        {% for g in grades %}
+        <label class="grade-card" style="background:{{ g.hex }}18; color:{{ g.text }};">
+          <input type="radio" name="grade_color" value="{{ g.key }}" required>
+          <div class="grade-dot" style="background:{{ g.hex }};"></div>
+          <span>{{ g.label }}</span>
+          <span style="opacity:.75;">{{ g.grade }}</span>
+          <span style="opacity:.65;">{{ g.points }}&thinsp;pts</span>
+        </label>
+        {% endfor %}
+      </div>
+    </div>
+
+    <!-- Type + Style side by side -->
+    <div class="two-col">
+      <div class="form-group">
+        <label class="field-label">Type</label>
+        <div class="opt-grid">
+          {% for val, lbl in [('overhang','Overhang'), ('neutral','Neutral'), ('slab','Slab')] %}
+          <label class="opt-card">
+            <input type="radio" name="climb_type" value="{{ val }}" required>
+            {{ lbl }}
+          </label>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="field-label">Style</label>
+        <div class="opt-grid">
+          {% for val, lbl in [('dyno','Dyno'), ('static','Static')] %}
+          <label class="opt-card">
+            <input type="radio" name="style" value="{{ val }}" required>
+            {{ lbl }}
+          </label>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+    <!-- Holds -->
+    <div class="form-group">
+      <label class="field-label">
+        Hold Types <span class="note">(tick all that apply)</span>
+      </label>
+      <div class="opt-grid cols-4">
+        {% for val, lbl in [('jugs','Jugs'), ('crimps','Crimps'), ('slopers','Slopers'), ('dual-tex','Dual-Tex')] %}
+        <label class="opt-card">
+          <input type="checkbox" name="holds" value="{{ val }}">
+          {{ lbl }}
+        </label>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div style="display:flex; gap:.5rem; justify-content:flex-end; padding-top:.5rem;">
+      <a href="/" class="btn btn-secondary">Cancel</a>
+      <button type="submit" class="btn btn-primary">Log Climb ✓</button>
+    </div>
+  </form>
+</div>
+
+{% endblock %}

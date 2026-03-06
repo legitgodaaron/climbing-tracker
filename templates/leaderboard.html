@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}Leaderboard — ClimbTracker{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1>🏆 Leaderboard</h1>
+</div>
+
+<!-- Filter tabs -->
+<div class="filter-bar">
+  <a href="?sort=total_points"
+     class="ftab {% if sort_by == 'total_points' %}active{% endif %}">
+    ⭐ Points
+  </a>
+  <a href="?sort=total_climbs"
+     class="ftab {% if sort_by == 'total_climbs' %}active{% endif %}">
+    🔢 Climbs
+  </a>
+  {% for g in grades %}
+  <a href="?sort={{ g.key }}"
+     class="ftab {% if sort_by == g.key %}active{% endif %}"
+     {% if sort_by == g.key %}
+     style="background:{{ g.hex }}; border-color:{{ g.hex }}; color:{{ g.text }};"
+     {% endif %}>
+    <span class="ftab-dot" style="background:{{ g.hex }};"></span>
+    {{ g.label }}
+  </a>
+  {% endfor %}
+</div>
+
+{% if rows %}
+<div class="lb-list">
+  {% for row in rows %}
+  {% set rank = loop.index %}
+  <div class="lb-card {% if rank == 1 %}rank-1{% elif rank == 2 %}rank-2{% elif rank == 3 %}rank-3{% endif %}">
+
+    <div class="lb-rank">
+      {% if rank == 1 %}🥇
+      {% elif rank == 2 %}🥈
+      {% elif rank == 3 %}🥉
+      {% else %}{{ rank }}{% endif %}
+    </div>
+
+    <div class="lb-info">
+      <div class="lb-name">{{ row.name }}</div>
+      <div class="lb-badges">
+        {% for g in grades %}
+        {% if row.grade_counts[g.key] > 0 %}
+        <span class="gbadge"
+              style="background:{{ g.hex }}20; color:{{ g.hex }}; border-color:{{ g.hex }}40;">
+          <span class="gbadge-dot" style="background:{{ g.hex }};"></span>
+          {{ row.grade_counts[g.key] }}
+        </span>
+        {% endif %}
+        {% endfor %}
+      </div>
+    </div>
+
+    <div style="text-align:right; flex-shrink:0;">
+      {% if sort_by == 'total_points' %}
+        <div class="lb-score" style="color:var(--accent);">{{ row.total_points }}</div>
+        <div class="lb-score-label">points</div>
+      {% elif sort_by == 'total_climbs' %}
+        <div class="lb-score" style="color:var(--accent);">{{ row.total_climbs }}</div>
+        <div class="lb-score-label">climbs</div>
+      {% else %}
+        {% set g = grade_map[sort_by] %}
+        <div class="lb-score" style="color:{{ g.hex }};">{{ row.grade_counts[sort_by] }}</div>
+        <div class="lb-score-label">{{ g.label }} sends</div>
+      {% endif %}
+    </div>
+
+  </div>
+  {% endfor %}
+</div>
+
+{% else %}
+<div class="card empty-state">
+  No climbers yet. <a href="/">Add some!</a>
+</div>
+{% endif %}
+
+{% endblock %}
