@@ -105,4 +105,22 @@
   </form>
 </div>
 
+<script>
+  // Remember the last selected climber across visits
+  const sel = document.getElementById('sel-user');
+  const KEY = 'ct_last_climber';
+
+  // Restore on load
+  const saved = localStorage.getItem(KEY);
+  if (saved) {
+    const opt = sel.querySelector('option[value="' + saved + '"]');
+    if (opt) { opt.selected = true; }
+  }
+
+  // Save on submit
+  sel.closest('form').addEventListener('submit', function() {
+    if (sel.value) localStorage.setItem(KEY, sel.value);
+  });
+</script>
+
 {% endblock %}

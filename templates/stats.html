@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% block title %}Stats — ClimbTracker{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1>📊 Stats</h1>
+</div>
+
+<!-- ── Record cards ─────────────────────────────────────────── -->
+<div class="stats-records">
+
+  {% if record_day %}
+  <div class="record-card">
+    <div class="record-icon">📅</div>
+    <div class="record-body">
+      <div class="record-val">{{ record_day.cnt }}</div>
+      <div class="record-lbl">climbs in one day</div>
+      <div class="record-who">{{ record_day.name }} &middot; {{ record_day.day }}</div>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if best_session %}
+  <div class="record-card">
+    <div class="record-icon">⚡</div>
+    <div class="record-body">
+      <div class="record-val" style="color:var(--accent);">{{ best_session.pts }}<span style="font-size:1rem; font-weight:600;">&thinsp;pts</span></div>
+      <div class="record-lbl">best session haul</div>
+      <div class="record-who">{{ best_session.name }} &middot; {{ best_session.gym_name }} &middot; {{ best_session.started_at[:10] }}</div>
+    </div>
+  </div>
+  {% endif %}
+
+</div>
+
+<!-- ── Per-climber breakdown ─────────────────────────────────── -->
+{% if user_rows %}
+<h2 style="margin: 1.75rem 0 0.8rem;">Climber Breakdown</h2>
+<div class="card" style="padding:0; overflow:hidden;">
+  <table class="stats-table">
+    <thead>
+      <tr>
+        <th>Climber</th>
+        <th>Total Climbs</th>
+        <th>Total Points</th>
+        <th>Hardest Grade</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in user_rows %}
+      <tr>
+        <td style="font-weight:600;">{{ row.name }}</td>
+        <td>{{ row.total_climbs }}</td>
+        <td style="color:var(--accent); font-weight:700;">{{ row.total_points }}</td>
+        <td>
+          {% if row.best_grade %}
+          <span class="gbadge"
+                style="background:{{ row.best_grade.hex }}22;
+                       color:{{ row.best_grade.hex }};
+                       border-color:{{ row.best_grade.hex }}44;">
+            <span class="gbadge-dot" style="background:{{ row.best_grade.hex }};"></span>
+            {{ row.best_grade.label }} &middot; {{ row.best_grade.grade }}
+          </span>
+          {% else %}
+          <span style="color:var(--muted);">—</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="card empty-state">
+  No climbs logged yet. <a href="/log">Log the first one!</a>
+</div>
+{% endif %}
+
+<style>
+  .stats-records {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 1rem;
+    margin-bottom: 0.5rem;
+  }
+  .record-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.25rem 1.4rem;
+    display: flex;
+    align-items: flex-start;
+    gap: 1rem;
+  }
+  .record-icon { font-size: 1.6rem; flex-shrink: 0; margin-top: .15rem; }
+  .record-val  { font-size: 2rem; font-weight: 800; line-height: 1; }
+  .record-lbl  { color: var(--muted); font-size: 0.8rem; margin-top: .15rem; text-transform: uppercase; letter-spacing: .05em; font-weight: 600; }
+  .record-who  { font-size: 0.82rem; margin-top: .4rem; color: var(--text); opacity: .75; }
+
+  .stats-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+  }
+  .stats-table th {
+    text-align: left;
+    padding: 0.65rem 1.25rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    border-bottom: 1px solid var(--border);
+    background: var(--surf2);
+  }
+  .stats-table td {
+    padding: 0.75rem 1.25rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .stats-table tr:last-child td { border-bottom: none; }
+  .stats-table tbody tr:hover { background: var(--surf2); }
+</style>
+
+{% endblock %}

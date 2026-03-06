@@ -374,7 +374,7 @@ def end_session(session_id):
 
 # ── Startup ───────────────────────────────────────────────────────────────────
 
-with app.app_context():
+
     init_db()
 
 if __name__ == '__main__':

@@ -386,6 +386,28 @@
     }
     .summ-val { font-size: 1.4rem; font-weight: 800; }
     .summ-lbl { color: var(--muted); font-size: 0.75rem; margin-top: 0.1rem; }
+    /* ── Mobile tweaks ───────────────────────────────────────────── */
+    @media (max-width: 600px) {
+      nav {
+        gap: 0.9rem;
+        padding: 0 0.9rem;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        flex-wrap: nowrap;
+      }
+      .opt-card {
+        padding: 0.75rem 0.8rem;
+        font-size: 0.95rem;
+      }
+      .grade-card {
+        padding: 0.9rem 0.4rem;
+      }
+      .btn-primary, .btn-secondary {
+        padding: 0.65rem 1.1rem;
+        font-size: 0.93rem;
+      }
+      .card { padding: 1rem; }
+    }
   </style>
 </head>
 <body>
@@ -395,6 +417,7 @@
     <a href="/log"         class="nav-link {% if request.endpoint == 'log_climb'  %}active{% endif %}">Log Climb</a>
     <a href="/leaderboard" class="nav-link {% if request.endpoint == 'leaderboard'%}active{% endif %}">Leaderboard</a>
     <a href="/sessions"    class="nav-link {% if request.endpoint in ('sessions','session_detail') %}active{% endif %}">Sessions</a>
+    <a href="/stats"       class="nav-link {% if request.endpoint == 'stats' %}active{% endif %}">Stats</a>
     {% if is_admin %}
     <span style="margin-left:auto; display:flex; align-items:center; gap:.6rem;">
       <span style="color:var(--accent); font-size:.8rem; font-weight:700;">🔑 Admin</span>
