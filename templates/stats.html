@@ -43,7 +43,7 @@
         <th>Climber</th>
         <th>Total Climbs</th>
         <th>Total Points</th>
-        <th class="col-grade">Hardest Grade</th>
+        <th>Hardest Grade</th>
         <th>Flash %</th>
       </tr>
     </thead>
@@ -53,7 +53,7 @@
         <td style="font-weight:600;">{{ row.name }}</td>
         <td>{{ row.total_climbs }}</td>
         <td style="color:var(--accent); font-weight:700;">{{ row.total_points }}</td>
-        <td class="col-grade">
+        <td>
           {% if row.best_grade %}
           <span class="gbadge"
                 style="background:{{ row.best_grade.hex }}22;
@@ -128,10 +128,6 @@
   }
   .stats-table tr:last-child td { border-bottom: none; }
   .stats-table tbody tr:hover { background: var(--surf2); }
-
-  @media (max-width: 540px) {
-    .col-grade { display: none; }
-  }
 </style>
 
 {% endblock %}
