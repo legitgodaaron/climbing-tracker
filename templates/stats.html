@@ -50,7 +50,7 @@
     <tbody>
       {% for row in user_rows %}
       <tr>
-        <td style="font-weight:600;">{{ row.name }}</td>
+        <td style="font-weight:600;"><a href="{{ url_for('climber_profile', user_id=row.id) }}" style="color:var(--text); text-decoration:none; border-bottom:1px solid var(--border); transition:color .15s;" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--text)'">{{ row.name }}</a></td>
         <td>{{ row.total_climbs }}</td>
         <td style="color:var(--accent); font-weight:700;">{{ row.total_points }}</td>
         <td>

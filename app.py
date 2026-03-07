@@ -420,7 +420,7 @@ def stats():
 
     grade_order = [g['key'] for g in GRADE_COLORS]  # ascending difficulty
     user_stats  = {
-        u['id']: {'name': u['name'], 'total_climbs': 0,
+        u['id']: {'id': u['id'], 'name': u['name'], 'total_climbs': 0,
                   'total_points': 0, 'best_grade': None,
                   'flashes': 0}
         for u in users
@@ -448,6 +448,96 @@ def stats():
                            record_day=record_day,
                            best_session=best_session,
                            user_rows=user_rows)
+
+
+# ── Climber profile ──────────────────────────────────────────────────────────
+
+@app.route('/climber/<int:user_id>')
+def climber_profile(user_id):
+    conn = get_db()
+    user = conn.execute('SELECT * FROM users WHERE id = ?', (user_id,)).fetchone()
+    if user is None:
+        conn.close()
+        return redirect(url_for('stats'))
+
+    climbs = conn.execute('''
+        SELECT c.*, s.gym_name AS session_gym
+        FROM   climbs c
+        LEFT   JOIN sessions s ON c.session_id = s.id
+        WHERE  c.user_id = ?
+        ORDER  BY c.date ASC
+    ''', (user_id,)).fetchall()
+
+    # Sessions this climber attended (with their personal totals)
+    session_rows = conn.execute('''
+        SELECT s.id, s.gym_name, s.started_at, s.ended_at,
+               COUNT(c.id)                AS climb_count,
+               COALESCE(SUM(c.points), 0) AS session_points
+        FROM   sessions s
+        JOIN   climbs   c ON c.session_id = s.id AND c.user_id = ?
+        GROUP  BY s.id
+        ORDER  BY s.started_at DESC
+    ''', (user_id,)).fetchall()
+    conn.close()
+
+    total_climbs  = len(climbs)
+    total_points  = sum(c['points'] for c in climbs)
+    total_flashes = sum(1 for c in climbs if c['flashed'])
+    flash_pct     = round(100 * total_flashes / total_climbs) if total_climbs else 0
+
+    grade_order = [g['key'] for g in GRADE_COLORS]
+    best_grade  = None
+    for c in climbs:
+        if c['grade_color'] in GRADE_MAP:
+            cur = best_grade
+            if cur is None or grade_order.index(c['grade_color']) > grade_order.index(cur['key']):
+                best_grade = GRADE_MAP[c['grade_color']]
+
+    # Grade breakdown
+    grade_counts = {g['key']: 0 for g in GRADE_COLORS}
+    for c in climbs:
+        if c['grade_color'] in grade_counts:
+            grade_counts[c['grade_color']] += 1
+
+    # Flash rate per grade
+    grade_flashes = {g['key']: {'sends': 0, 'flashes': 0} for g in GRADE_COLORS}
+    for c in climbs:
+        if c['grade_color'] in grade_flashes:
+            grade_flashes[c['grade_color']]['sends'] += 1
+            if c['flashed']:
+                grade_flashes[c['grade_color']]['flashes'] += 1
+
+    # Type / style / holds breakdown
+    type_counts  = {t: 0 for t in VALID_TYPES}
+    style_counts = {s: 0 for s in VALID_STYLES}
+    hold_counts  = {h: 0 for h in VALID_HOLDS}
+    for c in climbs:
+        if c['climb_type'] in type_counts:
+            type_counts[c['climb_type']] += 1
+        if c['style'] in style_counts:
+            style_counts[c['style']] += 1
+        for h in json.loads(c['holds']):
+            if h in hold_counts:
+                hold_counts[h] += 1
+
+    recent_climbs = list(reversed(climbs))[:15]
+
+    return render_template('climber.html',
+                           user=user,
+                           total_climbs=total_climbs,
+                           total_points=total_points,
+                           total_flashes=total_flashes,
+                           flash_pct=flash_pct,
+                           best_grade=best_grade,
+                           grade_counts=grade_counts,
+                           grade_flashes=grade_flashes,
+                           type_counts=type_counts,
+                           style_counts=style_counts,
+                           hold_counts=hold_counts,
+                           recent_climbs=recent_climbs,
+                           session_rows=session_rows,
+                           grades=GRADE_COLORS,
+                           grade_map=GRADE_MAP)
 
 
 # ── Startup ───────────────────────────────────────────────────────────────────

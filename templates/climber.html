@@ -1,0 +1,238 @@
+{% extends "base.html" %}
+{% block title %}{{ user.name }} — ClimbTracker{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <div>
+    <h1>{{ user.name }}</h1>
+    <div style="color:var(--muted); font-size:.85rem; margin-top:.25rem;">Climber profile</div>
+  </div>
+  <a href="{{ url_for('stats') }}" class="btn btn-secondary">&larr; Stats</a>
+</div>
+
+{% if total_climbs == 0 %}
+<div class="card empty-state">No climbs logged yet. <a href="/log">Log the first one!</a></div>
+{% else %}
+
+<!-- ── Summary cards ──────────────────────────────────────── -->
+<div class="cp-summary">
+  <div class="cp-stat">
+    <div class="cp-val">{{ total_climbs }}</div>
+    <div class="cp-lbl">Total Climbs</div>
+  </div>
+  <div class="cp-stat">
+    <div class="cp-val" style="color:var(--accent);">{{ total_points }}</div>
+    <div class="cp-lbl">Total Points</div>
+  </div>
+  <div class="cp-stat">
+    <div class="cp-val {% if flash_pct >= 50 %}cp-gold{% endif %}">{{ flash_pct }}%</div>
+    <div class="cp-lbl">Flash Rate</div>
+  </div>
+  <div class="cp-stat">
+    <div class="cp-val">{{ total_flashes }}</div>
+    <div class="cp-lbl">Flashes</div>
+  </div>
+  {% if best_grade %}
+  <div class="cp-stat">
+    <div class="cp-val" style="color:{{ best_grade.hex }};">{{ best_grade.label }}</div>
+    <div class="cp-lbl">Hardest Grade</div>
+  </div>
+  {% endif %}
+  <div class="cp-stat">
+    <div class="cp-val">{{ session_rows | length }}</div>
+    <div class="cp-lbl">Sessions</div>
+  </div>
+</div>
+
+<!-- ── Grade breakdown ────────────────────────────────────── -->
+<h2 style="margin:1.75rem 0 .8rem;">Grade Breakdown</h2>
+<div class="card">
+  {% set max_count = grade_counts.values() | max %}
+  {% for g in grades %}
+  {% set cnt = grade_counts[g.key] %}
+  {% if cnt > 0 or true %}
+  <div class="gb-row">
+    <div class="gb-label">
+      <span class="gbadge" style="background:{{ g.hex }}22; color:{{ g.hex }}; border-color:{{ g.hex }}44;">
+        <span class="gbadge-dot" style="background:{{ g.hex }};"></span>
+        {{ g.label }}
+      </span>
+    </div>
+    <div class="gb-bar-wrap">
+      <div class="gb-bar" style="width:{% if max_count > 0 %}{{ (cnt / max_count * 100) | round | int }}{% else %}0{% endif %}%; background:{{ g.hex }}; opacity:{% if cnt > 0 %}0.75{% else %}0.1{% endif %};"></div>
+    </div>
+    <div class="gb-count">{{ cnt }}</div>
+    {% set fd = grade_flashes[g.key] %}
+    <div class="gb-flash" title="Flashes / sends">
+      {% if fd.sends > 0 %}
+        <span style="{% if (fd.flashes / fd.sends) >= 0.5 %}color:#FFD700;{% else %}color:var(--muted);{% endif %} font-size:.8rem;">
+          ⚡ {{ (fd.flashes / fd.sends * 100) | round | int }}%
+        </span>
+      {% else %}
+        <span style="color:var(--border); font-size:.8rem;">—</span>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+  {% endfor %}
+</div>
+
+<!-- ── Style breakdown ────────────────────────────────────── -->
+<h2 style="margin:1.75rem 0 .8rem;">Preferences</h2>
+<div class="two-col">
+
+  <!-- Climb type -->
+  <div class="card">
+    <div class="pref-title">Climb Type</div>
+    {% set type_total = type_counts.values() | sum %}
+    {% for key, cnt in type_counts.items() %}
+    {% set pct = ((cnt / type_total * 100) | round | int) if type_total else 0 %}
+    <div class="pref-row">
+      <div class="pref-name">{{ key | capitalize }}</div>
+      <div class="pref-bar-wrap">
+        <div class="pref-bar" style="width:{{ pct }}%;"></div>
+      </div>
+      <div class="pref-pct">{{ pct }}%</div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <!-- Style -->
+  <div class="card">
+    <div class="pref-title">Style</div>
+    {% set style_total = style_counts.values() | sum %}
+    {% for key, cnt in style_counts.items() %}
+    {% set pct = ((cnt / style_total * 100) | round | int) if style_total else 0 %}
+    <div class="pref-row">
+      <div class="pref-name">{{ key | capitalize }}</div>
+      <div class="pref-bar-wrap">
+        <div class="pref-bar" style="width:{{ pct }}%;"></div>
+      </div>
+      <div class="pref-pct">{{ pct }}%</div>
+    </div>
+    {% endfor %}
+  </div>
+
+</div>
+
+<!-- Holds -->
+<div class="card" style="margin-top:1rem;">
+  <div class="pref-title">Hold Types</div>
+  {% set hold_total = hold_counts.values() | sum %}
+  <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(160px,1fr)); gap:.75rem 1.5rem; margin-top:.75rem;">
+    {% for key, cnt in hold_counts.items() %}
+    {% set pct = ((cnt / hold_total * 100) | round | int) if hold_total else 0 %}
+    <div>
+      <div style="display:flex; justify-content:space-between; font-size:.8rem; margin-bottom:.3rem;">
+        <span style="font-weight:600; text-transform:capitalize;">{{ key }}</span>
+        <span style="color:var(--muted);">{{ pct }}%</span>
+      </div>
+      <div class="pref-bar-wrap"><div class="pref-bar" style="width:{{ pct }}%;"></div></div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+<!-- ── Recent climbs ──────────────────────────────────────── -->
+<h2 style="margin:1.75rem 0 .8rem;">Recent Climbs</h2>
+<div class="card" style="padding:0 1.25rem;">
+  {% for c in recent_climbs %}
+  {% set g = grade_map[c.grade_color] %}
+  <div class="feed-item">
+    <div class="feed-dot" style="background:{{ g.hex }};"></div>
+    <div class="feed-body">
+      <div class="feed-meta" style="margin-top:0;">
+        <span class="gbadge" style="background:{{ g.hex }}22; color:{{ g.hex }}; border-color:{{ g.hex }}44;">
+          <span class="gbadge-dot" style="background:{{ g.hex }};"></span>
+          {{ g.label }} &middot; {{ g.grade }}
+        </span>
+        &ensp;{{ c.climb_type | capitalize }}
+        &middot; {{ c.style | capitalize }}
+        &middot; {{ c.holds | from_json | join(', ') }}
+        {% if c.flashed %}&ensp;<span style="color:#FFD700; font-size:.85em;">⚡ Flash</span>
+        {% elif c.attempts > 1 %}&ensp;<span style="color:var(--muted); font-size:.82em;">{{ c.attempts }} tries</span>{% endif %}
+      </div>
+      <div style="color:var(--muted); font-size:.75rem; margin-top:.2rem;">
+        {{ c.date[:10] }}{% if c.session_gym %} &middot; {{ c.session_gym }}{% endif %}
+      </div>
+    </div>
+    <div class="feed-pts">+{{ c.points }}&thinsp;pts</div>
+  </div>
+  {% endfor %}
+</div>
+
+<!-- ── Session history ────────────────────────────────────── -->
+{% if session_rows %}
+<h2 style="margin:1.75rem 0 .8rem;">Session History</h2>
+<div class="session-list">
+  {% for s in session_rows %}
+  <a href="{{ url_for('session_detail', session_id=s.id) }}" class="session-card">
+    <div>
+      <div class="session-gym">{{ s.gym_name }}</div>
+      <div class="session-meta">
+        {{ s.started_at[:10] }}
+        {% if s.ended_at %}&middot; Ended {{ s.ended_at[:10] }}{% else %}&middot; <span class="badge-active">In Progress</span>{% endif %}
+      </div>
+    </div>
+    <div class="session-card-stats">
+      <div>
+        <div class="stat-val">{{ s.climb_count }}</div>
+        <div class="stat-lbl">climbs</div>
+      </div>
+      <div>
+        <div class="stat-val" style="color:var(--accent);">{{ s.session_points }}</div>
+        <div class="stat-lbl">pts</div>
+      </div>
+    </div>
+  </a>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% endif %}{# end if total_climbs #}
+
+<style>
+  /* Summary strip */
+  .cp-summary {
+    display: flex;
+    gap: .75rem;
+    flex-wrap: wrap;
+  }
+  .cp-stat {
+    flex: 1 1 100px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1rem 1.25rem;
+    text-align: center;
+  }
+  .cp-val  { font-size: 1.8rem; font-weight: 800; line-height: 1.1; }
+  .cp-lbl  { font-size: .72rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin-top: .3rem; }
+  .cp-gold { color: #FFD700; }
+
+  /* Grade breakdown bars */
+  .gb-row {
+    display: flex;
+    align-items: center;
+    gap: .75rem;
+    padding: .45rem 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .gb-row:last-child { border-bottom: none; }
+  .gb-label    { width: 90px; flex-shrink: 0; }
+  .gb-bar-wrap { flex: 1; background: var(--surf2); border-radius: 999px; height: 8px; overflow: hidden; }
+  .gb-bar      { height: 100%; border-radius: 999px; min-width: 2px; transition: width .3s; }
+  .gb-count    { width: 28px; text-align: right; font-size: .85rem; font-weight: 700; flex-shrink: 0; }
+  .gb-flash    { width: 50px; text-align: right; flex-shrink: 0; }
+
+  /* Preference bars */
+  .pref-title { font-size: .75rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin-bottom: .75rem; }
+  .pref-row   { display: flex; align-items: center; gap: .65rem; margin-bottom: .55rem; }
+  .pref-row:last-child { margin-bottom: 0; }
+  .pref-name  { width: 70px; font-size: .85rem; font-weight: 600; flex-shrink: 0; }
+  .pref-bar-wrap { flex: 1; background: var(--surf2); border-radius: 999px; height: 7px; overflow: hidden; }
+  .pref-bar      { height: 100%; border-radius: 999px; background: var(--accent); opacity: .75; transition: width .3s; }
+  .pref-pct   { width: 36px; text-align: right; font-size: .8rem; color: var(--muted); flex-shrink: 0; }
+</style>
+
+{% endblock %}
