@@ -43,7 +43,7 @@
         <th>Climber</th>
         <th>Total Climbs</th>
         <th>Total Points</th>
-        <th>Hardest Grade</th>
+        <th class="col-grade">Hardest Grade</th>
         <th>Flash %</th>
       </tr>
     </thead>
@@ -53,7 +53,7 @@
         <td style="font-weight:600;"><a href="{{ url_for('climber_profile', user_id=row.id) }}" style="color:var(--text); text-decoration:none; border-bottom:1px solid var(--border); transition:color .15s;" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--text)'">{{ row.name }}</a></td>
         <td>{{ row.total_climbs }}</td>
         <td style="color:var(--accent); font-weight:700;">{{ row.total_points }}</td>
-        <td>
+        <td class="col-grade">
           {% if row.best_grade %}
           <span class="gbadge"
                 style="background:{{ row.best_grade.hex }}22;
@@ -128,6 +128,10 @@
   }
   .stats-table tr:last-child td { border-bottom: none; }
   .stats-table tbody tr:hover { background: var(--surf2); }
+
+  @media (max-width: 540px) {
+    .col-grade { display: none; }
+  }
 </style>
 
 {% endblock %}
