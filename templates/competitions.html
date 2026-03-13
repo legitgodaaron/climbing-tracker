@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}Competitions — ClimbTracker{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1>🏆 Competitions</h1>
+  <div style="display:flex; gap:.5rem;">
+    <a href="/competitions/log" class="btn btn-primary">+ Log Send</a>
+    {% if is_admin %}
+    <button class="btn btn-secondary"
+            onclick="document.getElementById('modal-comp').classList.add('open')">
+      + New Competition
+    </button>
+    {% endif %}
+  </div>
+</div>
+
+{% if comps %}
+<div class="session-list">
+  {% for c in comps %}
+  <a href="/competitions/{{ c.id }}" class="session-card">
+    <div>
+      <div class="session-gym">{{ c.name }}</div>
+      <div class="session-meta">
+        {{ c.month.strftime('%B %Y') }}
+        &middot; {{ c.participant_count }} climber{{ 's' if c.participant_count != 1 else '' }}
+        {% if c.top_problem > 0 %}&middot; Top: #{{ c.top_problem }}{% endif %}
+      </div>
+    </div>
+    <div class="session-card-stats">
+      <div>
+        <div class="stat-val">{{ c.total_sends }}</div>
+        <div class="stat-lbl">sends</div>
+      </div>
+    </div>
+  </a>
+  {% endfor %}
+</div>
+{% else %}
+<div class="card empty-state">
+  No competitions yet.
+  {% if is_admin %}
+  <br>
+  <button class="btn btn-primary" style="margin-top:.75rem;"
+          onclick="document.getElementById('modal-comp').classList.add('open')">
+    Create the first one!
+  </button>
+  {% endif %}
+</div>
+{% endif %}
+
+{% if is_admin %}
+<!-- Create Competition Modal -->
+<div class="overlay" id="modal-comp"
+     onclick="if(event.target===this)this.classList.remove('open')">
+  <div class="modal-box">
+    <h2>New Competition</h2>
+    <form method="POST" action="/competitions/create">
+      <div class="form-group">
+        <label class="field-label" for="comp-name">Name</label>
+        <input type="text" name="name" id="comp-name"
+               placeholder="e.g. March 2026 Comp" maxlength="100" autocomplete="off">
+      </div>
+      <div class="form-group">
+        <label class="field-label" for="comp-month">Month</label>
+        <input type="month" name="month" id="comp-month"
+               style="width:100%; background:var(--surf2); border:1px solid var(--border);
+                      border-radius:8px; color:var(--text); padding:.6rem .9rem;
+                      font-size:.93rem; outline:none; color-scheme:dark;">
+      </div>
+      <div style="display:flex; gap:.5rem; justify-content:flex-end;">
+        <button type="button" class="btn btn-secondary"
+                onclick="document.getElementById('modal-comp').classList.remove('open')">
+          Cancel
+        </button>
+        <button type="submit" class="btn btn-primary">Create</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
+
+{% endblock %}

@@ -134,11 +134,24 @@
 </div>
 
 <!-- ── Recent climbs ──────────────────────────────────────── -->
-<h2 style="margin:1.75rem 0 .8rem;">Recent Climbs</h2>
+<h2 style="margin:1.75rem 0 .8rem;">Recent Activity</h2>
 <div class="card" style="padding:0 1.25rem;">
   {% for c in recent_climbs %}
-  {% set g = grade_map[c.grade_color] %}
   <div class="feed-item">
+    {% if c.item_type == 'comp' %}
+    <div class="feed-dot" style="background:var(--accent);"></div>
+    <div class="feed-body">
+      <div class="feed-meta" style="margin-top:0;">
+        <span class="gbadge" style="background:rgba(124,108,255,0.15); color:var(--accent); border-color:rgba(124,108,255,0.3);">
+          🏆 Problem #{{ c.problem_number }}
+        </span>
+        &ensp;<a href="/competitions/{{ c.comp_id }}" style="color:var(--muted); text-decoration:none;">{{ c.comp_name }}</a>
+      </div>
+      <div style="color:var(--muted); font-size:.75rem; margin-top:.2rem;">{{ c.date.strftime('%Y-%m-%d') }}</div>
+    </div>
+    <div class="feed-pts" style="color:var(--accent);">#{{ c.problem_number }}</div>
+    {% else %}
+    {% set g = grade_map[c.grade_color] %}
     <div class="feed-dot" style="background:{{ g.hex }};"></div>
     <div class="feed-body">
       <div class="feed-meta" style="margin-top:0;">
@@ -157,6 +170,7 @@
       </div>
     </div>
     <div class="feed-pts">+{{ c.points }}&thinsp;pts</div>
+    {% endif %}
   </div>
   {% endfor %}
 </div>
@@ -190,6 +204,30 @@
 {% endif %}
 
 {% endif %}{# end if total_climbs #}
+
+<!-- ── Competition results ────────────────────────────────── -->
+{% if comp_results %}
+<h2 style="margin:1.75rem 0 .8rem;">Competition Results</h2>
+<div class="session-list">
+  {% for cr in comp_results %}
+  <a href="/competitions/{{ cr.id }}" class="session-card">
+    <div>
+      <div class="session-gym">{{ cr.name }}</div>
+      <div class="session-meta">
+        {{ cr.month.strftime('%B %Y') }}
+        &middot; {{ cr.total_sends }} problem{{ 's' if cr.total_sends != 1 else '' }} logged
+      </div>
+    </div>
+    <div class="session-card-stats">
+      <div>
+        <div class="stat-val" style="color:var(--accent);">#{{ cr.best_problem }}</div>
+        <div class="stat-lbl">best</div>
+      </div>
+    </div>
+  </a>
+  {% endfor %}
+</div>
+{% endif %}
 
 <style>
   /* Summary strip */

@@ -6,9 +6,9 @@
   <div>
     <h1>{{ session.gym_name }}</h1>
     <div style="color:var(--muted); font-size:.85rem; margin-top:.25rem;">
-      {{ session.started_at[:10] }}
+      {{ session.started_at.strftime('%Y-%m-%d') }}
       {% if session.ended_at %}
-        &middot; Ended {{ session.ended_at[:10] }}
+        &middot; Ended {{ session.ended_at.strftime('%Y-%m-%d') }}
       {% else %}
         &middot; <span class="badge-active">In Progress</span>
       {% endif %}
@@ -53,10 +53,20 @@
 </div>
 
 {% if climbs %}
+{% if is_admin %}
+<form id="bulk-form" method="POST" action="/bulk_delete_climbs">
+  <input type="hidden" name="next" value="/session/{{ session.id }}">
+{% endif %}
 <div class="card" style="margin-top:1.25rem;">
   {% for c in climbs %}
   {% set g = grade_map[c.grade_color] %}
   <div class="feed-item">
+    {% if is_admin %}
+    <label class="bulk-cb" title="Select">
+      <input type="checkbox" name="climb_ids" value="{{ c.id }}" onchange="bulkUpdate()">
+      <span class="bulk-check"></span>
+    </label>
+    {% endif %}
     <div class="feed-dot" style="background:{{ g.hex }};"></div>
     <div class="feed-body">
       <div class="feed-who">{{ c.climber }}</div>
@@ -73,17 +83,23 @@
       </div>
     </div>
     <div class="feed-pts">+{{ c.points }}&thinsp;pts</div>
-    {% if is_admin %}
-    <form method="POST" action="/delete_climb/{{ c.id }}"
-          onsubmit="return confirm('Delete this climb?')"
-          style="margin:0;">
-      <button type="submit" class="btn btn-secondary"
-              style="padding:.2rem .5rem; font-size:.75rem; color:#ff8b82; border-color:rgba(231,76,60,.35);" title="Delete climb">&times;</button>
-    </form>
-    {% endif %}
   </div>
   {% endfor %}
 </div>
+{% if is_admin %}
+<div id="bulk-bar" class="bulk-bar" style="display:none;">
+  <span id="bulk-count" style="color:var(--muted); font-size:.88rem;"></span>
+  <div style="display:flex; gap:.5rem; margin-left:auto;">
+    <button type="button" class="btn btn-secondary" onclick="bulkClear()">Clear</button>
+    <button type="submit" class="btn btn-secondary"
+            style="color:#ff8b82; border-color:rgba(231,76,60,.35);"
+            onclick="return confirm('Delete selected climbs? This cannot be undone.')">
+      Delete Selected
+    </button>
+  </div>
+</div>
+</form>
+{% endif %}
 {% else %}
 <div class="card empty-state" style="margin-top:1.25rem;">
   No climbs logged in this session yet.

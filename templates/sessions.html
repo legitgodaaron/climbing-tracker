@@ -18,9 +18,9 @@
     <div class="session-card-body">
       <div class="session-gym">{{ s.gym_name }}</div>
       <div class="session-meta">
-        {{ s.started_at[:10] }}
+        {{ s.started_at.strftime('%Y-%m-%d') }}
         {% if s.ended_at %}
-          &middot; Ended {{ s.ended_at[:10] }}
+          &middot; Ended {{ s.ended_at.strftime('%Y-%m-%d') }}
         {% else %}
           &middot; <span class="badge-active">In Progress</span>
         {% endif %}

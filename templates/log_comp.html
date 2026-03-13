@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% block title %}Log Comp Send — ClimbTracker{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1>Log a Comp Send</h1>
+  <a href="/competitions" class="btn btn-secondary">← Back</a>
+</div>
+
+<div class="card" style="max-width:640px; margin:0 auto;">
+  {% if error %}
+  <div class="alert-error">{{ error }}</div>
+  {% endif %}
+
+  {% if not comps %}
+  <div class="empty-state" style="padding:2rem 0;">
+    No competitions set up yet.
+    {% if is_admin %}<br><a href="/competitions">Create one first.</a>{% endif %}
+  </div>
+  {% else %}
+  <form method="POST" action="/competitions/log">
+
+    <!-- Climber -->
+    <div class="form-group">
+      <label class="field-label" for="sel-user">Climber</label>
+      <select name="user_id" id="sel-user" required>
+        <option value="" disabled selected>Select climber…</option>
+        {% for u in users %}
+        <option value="{{ u.id }}">{{ u.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <!-- Competition -->
+    <div class="form-group">
+      <label class="field-label" for="sel-comp">Competition</label>
+      <select name="competition_id" id="sel-comp" required>
+        <option value="" disabled {% if not selected_comp_id %}selected{% endif %}>Select competition…</option>
+        {% for c in comps %}
+        <option value="{{ c.id }}" {% if selected_comp_id == c.id %}selected{% endif %}>
+          {{ c.name }}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <!-- Problem number grid -->
+    <div class="form-group">
+      <label class="field-label">Problem Number
+        <span class="note">(1 = easiest &nbsp;·&nbsp; 30 = hardest)</span>
+      </label>
+      <div class="prob-grid">
+        {% for n in range(1, 31) %}
+        <label class="prob-card {% if n >= 21 %}prob-hard{% elif n >= 11 %}prob-mid{% else %}prob-easy{% endif %}">
+          <input type="radio" name="problem_number" value="{{ n }}" required>
+          {{ n }}
+        </label>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div style="display:flex; justify-content:flex-end; margin-top:1rem;">
+      <button type="submit" class="btn btn-primary" style="min-width:130px;">Log Send</button>
+    </div>
+  </form>
+  {% endif %}
+</div>
+
+<style>
+  .prob-grid {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 0.4rem;
+  }
+  @media (max-width: 480px) {
+    .prob-grid { grid-template-columns: repeat(5, 1fr); }
+  }
+
+  .prob-card {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 2.8rem;
+    border-radius: 8px;
+    font-size: 0.93rem;
+    font-weight: 700;
+    cursor: pointer;
+    border: 1.5px solid transparent;
+    transition: transform 0.1s, border-color 0.12s, box-shadow 0.12s;
+    user-select: none;
+  }
+  .prob-card input { display: none; }
+  .prob-card:hover { transform: translateY(-1px); }
+
+  .prob-easy { background: rgba(39,174,96,0.15);  color: #5ddb90; border-color: rgba(39,174,96,0.25); }
+  .prob-mid  { background: rgba(255,180,0,0.12);  color: #ffd060; border-color: rgba(255,180,0,0.25); }
+  .prob-hard { background: rgba(231,76,60,0.15);  color: #ff8b82; border-color: rgba(231,76,60,0.25); }
+
+  .prob-card:has(input:checked) {
+    border-color: rgba(255,255,255,0.85);
+    box-shadow: 0 0 12px rgba(255,255,255,0.12);
+    transform: translateY(-2px);
+  }
+</style>
+
+{% endblock %}

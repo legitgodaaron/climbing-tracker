@@ -22,7 +22,7 @@
         <option value="">No session</option>
         {% for s in active_sessions %}
         <option value="{{ s.id }}" {% if selected_session_id == s.id %}selected{% endif %}>
-          {{ s.gym_name }} &mdash; {{ s.started_at[:10] }}
+          {{ s.gym_name }} &mdash; {{ s.started_at.strftime('%Y-%m-%d') }}
         </option>
         {% endfor %}
       </select>

@@ -408,9 +408,79 @@
       }
       .card { padding: 1rem; }
     }
+    /* ── Bulk-delete checkbox ────────────────────────────────────── */
+    .bulk-cb {
+      display: flex;
+      align-items: center;
+      flex-shrink: 0;
+      cursor: pointer;
+      margin-right: -.1rem;
+    }
+    .bulk-cb input { display: none; }
+    .bulk-check {
+      width: 18px; height: 18px;
+      border: 1.5px solid var(--border);
+      border-radius: 5px;
+      background: var(--surf2);
+      flex-shrink: 0;
+      transition: border-color .12s, background .12s;
+      position: relative;
+    }
+    .bulk-cb input:checked + .bulk-check {
+      background: rgba(231,76,60,0.18);
+      border-color: rgba(231,76,60,.6);
+    }
+    .bulk-cb input:checked + .bulk-check::after {
+      content: '✕';
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: .7rem;
+      color: #ff8b82;
+    }
+
+    /* ── Bulk-delete sticky bar ───────────────────────────────── */
+    .bulk-bar {
+      position: fixed;
+      bottom: 1.25rem;
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--surface);
+      border: 1px solid rgba(231,76,60,.4);
+      border-radius: 12px;
+      padding: .65rem 1.1rem;
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      box-shadow: 0 4px 24px rgba(0,0,0,.5);
+      z-index: 100;
+      min-width: 280px;
+      max-width: 90vw;
+    }
   </style>
 </head>
 <body>
+
+<script>
+function bulkUpdate() {
+  const boxes   = document.querySelectorAll('#bulk-form input[name="climb_ids"]');
+  const checked = [...boxes].filter(b => b.checked);
+  const bar     = document.getElementById('bulk-bar');
+  const count   = document.getElementById('bulk-count');
+  if (checked.length > 0) {
+    bar.style.display = 'flex';
+    count.textContent  = checked.length + ' climb' + (checked.length > 1 ? 's' : '') + ' selected';
+  } else {
+    bar.style.display = 'none';
+  }
+}
+function bulkClear() {
+  document.querySelectorAll('#bulk-form input[name="climb_ids"]').forEach(b => b.checked = false);
+  document.getElementById('bulk-bar').style.display = 'none';
+}
+</script>
   <nav>
     <a href="/" class="nav-brand">🧗 <span class="hi">Climb</span>Tracker</a>
     <a href="/"            class="nav-link {% if request.endpoint == 'index'      %}active{% endif %}">Home</a>
@@ -418,6 +488,7 @@
     <a href="/leaderboard" class="nav-link {% if request.endpoint == 'leaderboard'%}active{% endif %}">Leaderboard</a>
     <a href="/sessions"    class="nav-link {% if request.endpoint in ('sessions','session_detail') %}active{% endif %}">Sessions</a>
     <a href="/stats"       class="nav-link {% if request.endpoint == 'stats' %}active{% endif %}">Stats</a>
+    <a href="/competitions" class="nav-link {% if request.endpoint in ('competitions','competition_detail','log_comp_send') %}active{% endif %}">Comps</a>
     {% if is_admin %}
     <span style="margin-left:auto; display:flex; align-items:center; gap:.6rem;">
       <span style="color:var(--accent); font-size:.8rem; font-weight:700;">🔑 Admin</span>

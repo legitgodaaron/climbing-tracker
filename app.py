@@ -1,6 +1,7 @@
 import os
 import json
 import psycopg2
+from datetime import datetime
 from psycopg2.extras import RealDictCursor
 from psycopg2 import pool as pg_pool
 from flask import Flask, render_template, request, redirect, url_for, session as flask_session, g
@@ -108,6 +109,26 @@ def init_db():
     if 'attempts' not in cols:
         cur.execute('ALTER TABLE climbs ADD COLUMN attempts INTEGER NOT NULL DEFAULT 1')
     conn.commit()
+
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS competitions (
+            id         SERIAL PRIMARY KEY,
+            name       TEXT   NOT NULL,
+            month      DATE   NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS comp_sends (
+            id             SERIAL PRIMARY KEY,
+            user_id        INTEGER NOT NULL REFERENCES users(id),
+            competition_id INTEGER NOT NULL REFERENCES competitions(id),
+            problem_number INTEGER NOT NULL CHECK (problem_number BETWEEN 1 AND 30),
+            date           TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE (user_id, competition_id, problem_number)
+        )
+    ''')
+    conn.commit()
     cur.close()
 
 
@@ -148,8 +169,18 @@ def index():
         ORDER  BY c.date DESC
         LIMIT  20
     ''')
-    recent = cur.fetchall()
+    recent_climbs = [dict(r, item_type='climb') for r in cur.fetchall()]
+    cur.execute('''
+        SELECT cs.*, u.name AS climber, comp.name AS comp_name, comp.id AS comp_id
+        FROM   comp_sends  cs
+        JOIN   users       u    ON cs.user_id       = u.id
+        JOIN   competitions comp ON cs.competition_id = comp.id
+        ORDER  BY cs.date DESC
+        LIMIT  20
+    ''')
+    recent_comp = [dict(r, item_type='comp') for r in cur.fetchall()]
     cur.close()
+    recent = sorted(recent_climbs + recent_comp, key=lambda x: x['date'], reverse=True)[:20]
     return render_template('index.html', users=users, recent=recent, grade_map=GRADE_MAP)
 
 
@@ -339,6 +370,27 @@ def delete_climb(climb_id):
     if row and row['session_id']:
         return redirect(url_for('session_detail', session_id=row['session_id']))
     return redirect(url_for('index'))
+
+
+@app.route('/bulk_delete_climbs', methods=['POST'])
+def bulk_delete_climbs():
+    if not is_admin():
+        return redirect(url_for('admin_login'))
+    raw_ids  = request.form.getlist('climb_ids')
+    next_url = request.form.get('next', url_for('index'))
+    ids = []
+    for v in raw_ids:
+        try:
+            ids.append(int(v))
+        except (ValueError, TypeError):
+            pass
+    if ids:
+        conn = get_db()
+        cur  = conn.cursor()
+        cur.execute('DELETE FROM climbs WHERE id = ANY(%s)', (ids,))
+        conn.commit()
+        cur.close()
+    return redirect(next_url)
 
 
 @app.route('/delete_session/<int:session_id>', methods=['POST'])
@@ -537,6 +589,21 @@ def climber_profile(user_id):
         ORDER  BY s.started_at DESC
     ''', (user_id,))
     session_rows = cur.fetchall()
+
+    # Competition results for this climber
+    cur.execute('''
+        SELECT comp.id, comp.name, comp.month,
+               MAX(cs.problem_number)             AS best_problem,
+               COUNT(cs.id)                       AS total_sends,
+               COALESCE(SUM(cs.problem_number), 0) AS total_points,
+               ARRAY_AGG(cs.problem_number ORDER BY cs.problem_number DESC) AS problems
+        FROM   comp_sends   cs
+        JOIN   competitions comp ON cs.competition_id = comp.id
+        WHERE  cs.user_id = %s
+        GROUP  BY comp.id, comp.name, comp.month
+        ORDER  BY comp.month DESC
+    ''', (user_id,))
+    comp_results = cur.fetchall()
     cur.close()
 
     total_climbs  = len(climbs)
@@ -579,7 +646,19 @@ def climber_profile(user_id):
             if h in hold_counts:
                 hold_counts[h] += 1
 
-    recent_climbs = list(reversed(climbs))[:15]
+    recent_climbs = [dict(c, item_type='climb') for c in climbs]
+
+    cur.execute('''
+        SELECT cs.*, comp.name AS comp_name, comp.id AS comp_id
+        FROM   comp_sends   cs
+        JOIN   competitions comp ON cs.competition_id = comp.id
+        WHERE  cs.user_id = %s
+        ORDER  BY cs.date DESC
+        LIMIT  20
+    ''', (user_id,))
+    recent_comp = [dict(r, item_type='comp') for r in cur.fetchall()]
+
+    recent_activity = sorted(recent_climbs + recent_comp, key=lambda x: x['date'], reverse=True)[:15]
 
     return render_template('climber.html',
                            user=user,
@@ -593,10 +672,160 @@ def climber_profile(user_id):
                            type_counts=type_counts,
                            style_counts=style_counts,
                            hold_counts=hold_counts,
-                           recent_climbs=recent_climbs,
+                           recent_climbs=recent_activity,
                            session_rows=session_rows,
+                           comp_results=comp_results,
                            grades=GRADE_COLORS,
                            grade_map=GRADE_MAP)
+
+
+# ── Competition routes ───────────────────────────────────────────────────────
+
+@app.route('/competitions')
+def competitions():
+    conn = get_db()
+    cur  = conn.cursor()
+    cur.execute('''
+        SELECT c.*,
+               COUNT(DISTINCT cs.user_id)       AS participant_count,
+               COALESCE(MAX(cs.problem_number), 0) AS top_problem,
+               COUNT(cs.id)                     AS total_sends
+        FROM   competitions c
+        LEFT   JOIN comp_sends cs ON cs.competition_id = c.id
+        GROUP  BY c.id
+        ORDER  BY c.month DESC
+    ''')
+    comps = cur.fetchall()
+    cur.close()
+    return render_template('competitions.html', comps=comps)
+
+
+@app.route('/competitions/<int:comp_id>')
+def competition_detail(comp_id):
+    conn = get_db()
+    cur  = conn.cursor()
+    cur.execute('SELECT * FROM competitions WHERE id = %s', (comp_id,))
+    comp = cur.fetchone()
+    if comp is None:
+        cur.close()
+        return redirect(url_for('competitions'))
+    cur.execute('''
+        SELECT u.id, u.name,
+               MAX(cs.problem_number)              AS best_problem,
+               COUNT(cs.id)                        AS total_sends,
+               COALESCE(SUM(cs.problem_number), 0) AS total_points,
+               ARRAY_AGG(cs.problem_number ORDER BY cs.problem_number DESC) AS problems,
+               ARRAY_AGG(cs.id            ORDER BY cs.problem_number DESC) AS send_ids
+        FROM   comp_sends cs
+        JOIN   users      u ON cs.user_id = u.id
+        WHERE  cs.competition_id = %s
+        GROUP  BY u.id, u.name
+        ORDER  BY best_problem DESC, total_points DESC
+    ''', (comp_id,))
+    results = cur.fetchall()
+    cur.close()
+    return render_template('competition.html', comp=comp, results=results)
+
+
+@app.route('/competitions/log', methods=['GET', 'POST'])
+def log_comp_send():
+    conn = get_db()
+    cur  = conn.cursor()
+    cur.execute('SELECT * FROM users ORDER BY name')
+    users = cur.fetchall()
+    cur.execute('SELECT * FROM competitions ORDER BY month DESC')
+    comps = cur.fetchall()
+    cur.close()
+
+    if request.method == 'POST':
+        error = None
+        try:
+            user_id = int(request.form.get('user_id', ''))
+        except (ValueError, TypeError):
+            user_id = None
+            error   = 'Please select a climber.'
+        try:
+            comp_id = int(request.form.get('competition_id', ''))
+        except (ValueError, TypeError):
+            comp_id = None
+            if not error:
+                error = 'Please select a competition.'
+        try:
+            problem_number = int(request.form.get('problem_number', ''))
+            if not (1 <= problem_number <= 30):
+                raise ValueError
+        except (ValueError, TypeError):
+            problem_number = None
+            if not error:
+                error = 'Please select a problem (1\u201330).'
+
+        if not error:
+            conn2 = get_db()
+            cur2  = conn2.cursor()
+            try:
+                cur2.execute(
+                    'INSERT INTO comp_sends (user_id, competition_id, problem_number) '
+                    'VALUES (%s, %s, %s)',
+                    (user_id, comp_id, problem_number)
+                )
+                conn2.commit()
+            except psycopg2.IntegrityError:
+                conn2.rollback()
+                error = f'Problem #{problem_number} is already logged for this climber in this competition.'
+            finally:
+                cur2.close()
+
+        if error:
+            conn3 = get_db()
+            cur3  = conn3.cursor()
+            cur3.execute('SELECT * FROM users ORDER BY name')
+            users = cur3.fetchall()
+            cur3.execute('SELECT * FROM competitions ORDER BY month DESC')
+            comps = cur3.fetchall()
+            cur3.close()
+            return render_template('log_comp.html', users=users, comps=comps, error=error,
+                                   selected_comp_id=request.form.get('competition_id', type=int))
+        return redirect(url_for('log_comp_send', comp_id=comp_id))
+
+    selected_comp_id = request.args.get('comp_id', type=int)
+    return render_template('log_comp.html', users=users, comps=comps,
+                           selected_comp_id=selected_comp_id)
+
+
+@app.route('/competitions/create', methods=['POST'])
+def create_competition():
+    if not is_admin():
+        return redirect(url_for('admin_login', next=url_for('competitions')))
+    name      = request.form.get('name', '').strip()[:100]
+    month_str = request.form.get('month', '').strip()
+    if not name or not month_str:
+        return redirect(url_for('competitions'))
+    try:
+        month = datetime.strptime(month_str, '%Y-%m').date()
+    except ValueError:
+        return redirect(url_for('competitions'))
+    conn = get_db()
+    cur  = conn.cursor()
+    cur.execute('INSERT INTO competitions (name, month) VALUES (%s, %s)', (name, month))
+    conn.commit()
+    cur.close()
+    return redirect(url_for('competitions'))
+
+
+@app.route('/competitions/delete_send/<int:send_id>', methods=['POST'])
+def delete_comp_send(send_id):
+    if not is_admin():
+        return redirect(url_for('admin_login'))
+    conn = get_db()
+    cur  = conn.cursor()
+    cur.execute('SELECT competition_id FROM comp_sends WHERE id = %s', (send_id,))
+    row = cur.fetchone()
+    cur.execute('DELETE FROM comp_sends WHERE id = %s', (send_id,))
+    conn.commit()
+    cur.close()
+    if row:
+        return redirect(url_for('competition_detail', comp_id=row['competition_id']))
+    return redirect(url_for('competitions'))
 
 
 # ── Startup ───────────────────────────────────────────────────────────────────
