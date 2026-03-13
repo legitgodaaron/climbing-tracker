@@ -356,6 +356,37 @@ def admin_logout():
     return redirect(url_for('index'))
 
 
+@app.route('/admin/rename_user/<int:user_id>', methods=['POST'])
+def rename_user(user_id):
+    if not is_admin():
+        return redirect(url_for('admin_login'))
+    new_name = request.form.get('name', '').strip()
+    if 1 <= len(new_name) <= 50:
+        conn = get_db()
+        cur  = conn.cursor()
+        try:
+            cur.execute('UPDATE users SET name = %s WHERE id = %s', (new_name, user_id))
+            conn.commit()
+        except psycopg2.IntegrityError:
+            conn.rollback()
+        cur.close()
+    return redirect(url_for('climber_profile', user_id=user_id))
+
+
+@app.route('/admin/delete_user/<int:user_id>', methods=['POST'])
+def delete_user(user_id):
+    if not is_admin():
+        return redirect(url_for('admin_login'))
+    conn = get_db()
+    cur  = conn.cursor()
+    cur.execute('DELETE FROM comp_sends WHERE user_id = %s', (user_id,))
+    cur.execute('DELETE FROM climbs     WHERE user_id = %s', (user_id,))
+    cur.execute('DELETE FROM users      WHERE id = %s',      (user_id,))
+    conn.commit()
+    cur.close()
+    return redirect(url_for('stats'))
+
+
 @app.route('/delete_climb/<int:climb_id>', methods=['POST'])
 def delete_climb(climb_id):
     if not is_admin():
@@ -604,6 +635,16 @@ def climber_profile(user_id):
         ORDER  BY comp.month DESC
     ''', (user_id,))
     comp_results = cur.fetchall()
+
+    cur.execute('''
+        SELECT cs.*, comp.name AS comp_name, comp.id AS comp_id
+        FROM   comp_sends   cs
+        JOIN   competitions comp ON cs.competition_id = comp.id
+        WHERE  cs.user_id = %s
+        ORDER  BY cs.date DESC
+        LIMIT  20
+    ''', (user_id,))
+    recent_comp_rows = cur.fetchall()
     cur.close()
 
     total_climbs  = len(climbs)
@@ -615,8 +656,8 @@ def climber_profile(user_id):
     best_grade  = None
     for c in climbs:
         if c['grade_color'] in GRADE_MAP:
-            cur = best_grade
-            if cur is None or grade_order.index(c['grade_color']) > grade_order.index(cur['key']):
+            _prev = best_grade
+            if _prev is None or grade_order.index(c['grade_color']) > grade_order.index(_prev['key']):
                 best_grade = GRADE_MAP[c['grade_color']]
 
     # Grade breakdown
@@ -647,16 +688,7 @@ def climber_profile(user_id):
                 hold_counts[h] += 1
 
     recent_climbs = [dict(c, item_type='climb') for c in climbs]
-
-    cur.execute('''
-        SELECT cs.*, comp.name AS comp_name, comp.id AS comp_id
-        FROM   comp_sends   cs
-        JOIN   competitions comp ON cs.competition_id = comp.id
-        WHERE  cs.user_id = %s
-        ORDER  BY cs.date DESC
-        LIMIT  20
-    ''', (user_id,))
-    recent_comp = [dict(r, item_type='comp') for r in cur.fetchall()]
+    recent_comp   = [dict(r, item_type='comp') for r in recent_comp_rows]
 
     recent_activity = sorted(recent_climbs + recent_comp, key=lambda x: x['date'], reverse=True)[:15]
 

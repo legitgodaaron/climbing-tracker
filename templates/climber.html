@@ -7,8 +7,40 @@
     <h1>{{ user.name }}</h1>
     <div style="color:var(--muted); font-size:.85rem; margin-top:.25rem;">Climber profile</div>
   </div>
-  <a href="{{ url_for('stats') }}" class="btn btn-secondary">&larr; Stats</a>
+  <div style="display:flex; gap:.5rem; align-items:center;">
+    {% if is_admin %}
+    <button class="btn btn-secondary" onclick="document.getElementById('modal-rename').classList.add('open')">Rename</button>
+    <form method="POST" action="{{ url_for('delete_user', user_id=user.id) }}"
+          onsubmit="return confirm('Delete {{ user.name }} and ALL their climbs? This cannot be undone.')">
+      <button type="submit" class="btn btn-secondary" style="color:#ff8b82; border-color:rgba(231,76,60,.35);">Delete</button>
+    </form>
+    {% endif %}
+    <a href="{{ url_for('stats') }}" class="btn btn-secondary">&larr; Stats</a>
+  </div>
 </div>
+
+{% if is_admin %}
+<div class="overlay" id="modal-rename" onclick="if(event.target===this)this.classList.remove('open')">
+  <div class="modal-box">
+    <h2>Rename Climber</h2>
+    <form method="POST" action="{{ url_for('rename_user', user_id=user.id) }}">
+      <div class="form-group">
+        <label class="field-label" for="rname">New Name</label>
+        <input type="text" name="name" id="rname"
+               value="{{ user.name }}"
+               required autocomplete="off" maxlength="50">
+      </div>
+      <div style="display:flex; gap:.5rem; justify-content:flex-end;">
+        <button type="button" class="btn btn-secondary"
+                onclick="document.getElementById('modal-rename').classList.remove('open')">
+          Cancel
+        </button>
+        <button type="submit" class="btn btn-primary">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
 
 {% if total_climbs == 0 %}
 <div class="card empty-state">No climbs logged yet. <a href="/log">Log the first one!</a></div>
