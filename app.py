@@ -2,10 +2,14 @@ import os
 import json
 import psycopg2
 from psycopg2.extras import RealDictCursor
-from flask import Flask, render_template, request, redirect, url_for, session as flask_session
+from psycopg2 import pool as pg_pool
+from flask import Flask, render_template, request, redirect, url_for, session as flask_session, g
 
 app = Flask(__name__)
-DATABASE_URL     = os.environ.get('DATABASE_URL', '').replace('postgres://', 'postgresql://', 1)
+_db_url = os.environ.get('DATABASE_URL', '')
+if not _db_url:
+    raise RuntimeError("DATABASE_URL environment variable is not set.")
+DATABASE_URL     = _db_url.replace('postgres://', 'postgresql://', 1)
 app.secret_key   = os.environ.get('SECRET_KEY', 'dev-secret-change-in-prod')
 ADMIN_PASSWORD   = os.environ.get('ADMIN_PASSWORD', '')
 
@@ -31,9 +35,25 @@ VALID_SORTS  = {'total_points', 'total_climbs'} | set(GRADE_MAP.keys())
 
 # ── Database ───────────────────────────────────────────────────────────────────
 
+_db_pool = pg_pool.ThreadedConnectionPool(
+    minconn=1, maxconn=10, dsn=DATABASE_URL
+)
+
+
 def get_db():
-    conn = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
-    return conn
+    if 'db_conn' not in g:
+        g.db_conn = _db_pool.getconn()
+        g.db_conn.cursor_factory = RealDictCursor
+    return g.db_conn
+
+
+@app.teardown_appcontext
+def close_db(exc):
+    conn = g.pop('db_conn', None)
+    if conn is not None:
+        if exc is not None:
+            conn.rollback()
+        _db_pool.putconn(conn)
 
 
 def init_db():
@@ -87,7 +107,6 @@ def init_db():
         cur.execute('ALTER TABLE climbs ADD COLUMN attempts INTEGER NOT NULL DEFAULT 1')
     conn.commit()
     cur.close()
-    conn.close()
 
 
 # ── Admin helpers ────────────────────────────────────────────────────────────
@@ -129,7 +148,6 @@ def index():
     ''')
     recent = cur.fetchall()
     cur.close()
-    conn.close()
     return render_template('index.html', users=users, recent=recent, grade_map=GRADE_MAP)
 
 
@@ -145,7 +163,6 @@ def add_user():
         except psycopg2.IntegrityError:
             conn.rollback()
         cur.close()
-        conn.close()
     return redirect(url_for('index'))
 
 
@@ -158,7 +175,6 @@ def log_climb():
     cur.execute('SELECT * FROM sessions WHERE ended_at IS NULL ORDER BY started_at DESC')
     active_sessions = cur.fetchall()
     cur.close()
-    conn.close()
 
     if request.method == 'POST':
         error = None
@@ -214,7 +230,6 @@ def log_climb():
             )
             valid = cur.fetchone()
             cur.close()
-            conn.close()
             if valid is None:
                 session_id = None
 
@@ -228,7 +243,6 @@ def log_climb():
         )
         conn.commit()
         cur.close()
-        conn.close()
         if session_id:
             return redirect(url_for('session_detail', session_id=session_id))
         return redirect(url_for('index'))
@@ -252,7 +266,6 @@ def leaderboard():
     cur.execute('SELECT * FROM climbs')
     all_climbs = cur.fetchall()
     cur.close()
-    conn.close()
 
     stats = {
         u['id']: {
@@ -321,7 +334,6 @@ def delete_climb(climb_id):
     cur.execute('DELETE FROM climbs WHERE id = %s', (climb_id,))
     conn.commit()
     cur.close()
-    conn.close()
     if row and row['session_id']:
         return redirect(url_for('session_detail', session_id=row['session_id']))
     return redirect(url_for('index'))
@@ -337,7 +349,6 @@ def delete_session(session_id):
     cur.execute('DELETE FROM sessions WHERE id = %s',         (session_id,))
     conn.commit()
     cur.close()
-    conn.close()
     return redirect(url_for('sessions'))
 
 
@@ -358,7 +369,6 @@ def sessions():
     ''')
     rows = cur.fetchall()
     cur.close()
-    conn.close()
     return render_template('sessions.html', sessions=rows)
 
 
@@ -372,7 +382,6 @@ def start_session():
     sid   = cur.fetchone()['id']
     conn.commit()
     cur.close()
-    conn.close()
     return redirect(url_for('session_detail', session_id=sid))
 
 
@@ -384,7 +393,6 @@ def session_detail(session_id):
     session = cur.fetchone()
     if session is None:
         cur.close()
-        conn.close()
         return redirect(url_for('sessions'))
     cur.execute('''
         SELECT c.*, u.name AS climber
@@ -395,7 +403,6 @@ def session_detail(session_id):
     ''', (session_id,))
     climbs = cur.fetchall()
     cur.close()
-    conn.close()
     climber_stats = {}
     total_points  = 0
     for c in climbs:
@@ -423,7 +430,6 @@ def end_session(session_id):
     )
     conn.commit()
     cur.close()
-    conn.close()
     return redirect(url_for('session_detail', session_id=session_id))
 
 
@@ -464,7 +470,6 @@ def stats():
     cur.execute('SELECT * FROM climbs')
     all_climbs = cur.fetchall()
     cur.close()
-    conn.close()
 
     grade_order = [g['key'] for g in GRADE_COLORS]  # ascending difficulty
     user_stats  = {
@@ -508,7 +513,6 @@ def climber_profile(user_id):
     user = cur.fetchone()
     if user is None:
         cur.close()
-        conn.close()
         return redirect(url_for('stats'))
 
     cur.execute('''
@@ -532,7 +536,6 @@ def climber_profile(user_id):
     ''', (user_id,))
     session_rows = cur.fetchall()
     cur.close()
-    conn.close()
 
     total_climbs  = len(climbs)
     total_points  = sum(c['points'] for c in climbs)
