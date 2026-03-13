@@ -1,13 +1,11 @@
 import os
 import json
-import sqlite3
+import psycopg2
+from psycopg2.extras import RealDictCursor
 from flask import Flask, render_template, request, redirect, url_for, session as flask_session
 
 app = Flask(__name__)
-# On Render free tier the app root is read-only; /tmp is writable.
-# Locally this falls back to a climbs.db next to app.py.
-_default_db = os.path.join(app.root_path, 'climbs.db')
-DATABASE         = os.environ.get('DATABASE_PATH', _default_db)
+DATABASE_URL     = os.environ.get('DATABASE_URL', '').replace('postgres://', 'postgresql://', 1)
 app.secret_key   = os.environ.get('SECRET_KEY', 'dev-secret-change-in-prod')
 ADMIN_PASSWORD   = os.environ.get('ADMIN_PASSWORD', '')
 
@@ -34,28 +32,32 @@ VALID_SORTS  = {'total_points', 'total_climbs'} | set(GRADE_MAP.keys())
 # ── Database ───────────────────────────────────────────────────────────────────
 
 def get_db():
-    conn = sqlite3.connect(DATABASE)
-    conn.row_factory = sqlite3.Row
+    conn = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
     return conn
 
 
 def init_db():
     conn = get_db()
-    conn.executescript('''
+    cur  = conn.cursor()
+    cur.execute('''
         CREATE TABLE IF NOT EXISTS users (
-            id         INTEGER PRIMARY KEY AUTOINCREMENT,
-            name       TEXT    NOT NULL UNIQUE,
+            id         SERIAL PRIMARY KEY,
+            name       TEXT   NOT NULL UNIQUE,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
+        )
+    ''')
+    cur.execute('''
         CREATE TABLE IF NOT EXISTS sessions (
-            id         INTEGER PRIMARY KEY AUTOINCREMENT,
-            gym_name   TEXT    NOT NULL DEFAULT 'The Wall',
-            notes      TEXT    NOT NULL DEFAULT '',
+            id         SERIAL PRIMARY KEY,
+            gym_name   TEXT   NOT NULL DEFAULT 'The Wall',
+            notes      TEXT   NOT NULL DEFAULT '',
             started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             ended_at   TIMESTAMP
-        );
+        )
+    ''')
+    cur.execute('''
         CREATE TABLE IF NOT EXISTS climbs (
-            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            id          SERIAL PRIMARY KEY,
             user_id     INTEGER NOT NULL,
             session_id  INTEGER,
             grade_color TEXT    NOT NULL,
@@ -68,17 +70,23 @@ def init_db():
             date        TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (user_id)    REFERENCES users(id),
             FOREIGN KEY (session_id) REFERENCES sessions(id)
-        );
+        )
     ''')
-    # Migrate: add session_id to existing climbs table if absent
-    cols = [row[1] for row in conn.execute('PRAGMA table_info(climbs)')]
-    if 'session_id' not in cols:
-        conn.execute('ALTER TABLE climbs ADD COLUMN session_id INTEGER REFERENCES sessions(id)')
-    if 'flashed' not in cols:
-        conn.execute('ALTER TABLE climbs ADD COLUMN flashed INTEGER NOT NULL DEFAULT 0')
-    if 'attempts' not in cols:
-        conn.execute('ALTER TABLE climbs ADD COLUMN attempts INTEGER NOT NULL DEFAULT 1')
     conn.commit()
+    # Migrate: add columns if absent
+    cur.execute("""
+        SELECT column_name FROM information_schema.columns
+        WHERE table_name = 'climbs'
+    """)
+    cols = [row['column_name'] for row in cur.fetchall()]
+    if 'session_id' not in cols:
+        cur.execute('ALTER TABLE climbs ADD COLUMN session_id INTEGER REFERENCES sessions(id)')
+    if 'flashed' not in cols:
+        cur.execute('ALTER TABLE climbs ADD COLUMN flashed INTEGER NOT NULL DEFAULT 0')
+    if 'attempts' not in cols:
+        cur.execute('ALTER TABLE climbs ADD COLUMN attempts INTEGER NOT NULL DEFAULT 1')
+    conn.commit()
+    cur.close()
     conn.close()
 
 
@@ -107,16 +115,20 @@ def from_json_filter(s):
 
 @app.route('/')
 def index():
-    conn   = get_db()
-    users  = conn.execute('SELECT * FROM users ORDER BY name').fetchall()
-    recent = conn.execute('''
+    conn = get_db()
+    cur  = conn.cursor()
+    cur.execute('SELECT * FROM users ORDER BY name')
+    users = cur.fetchall()
+    cur.execute('''
         SELECT c.*, u.name AS climber, s.gym_name AS session_gym
         FROM   climbs c
         JOIN   users  u ON c.user_id = u.id
         LEFT   JOIN sessions s ON c.session_id = s.id
         ORDER  BY c.date DESC
         LIMIT  20
-    ''').fetchall()
+    ''')
+    recent = cur.fetchall()
+    cur.close()
     conn.close()
     return render_template('index.html', users=users, recent=recent, grade_map=GRADE_MAP)
 
@@ -126,11 +138,13 @@ def add_user():
     name = request.form.get('name', '').strip()
     if 1 <= len(name) <= 50:
         conn = get_db()
+        cur  = conn.cursor()
         try:
-            conn.execute('INSERT INTO users (name) VALUES (?)', (name,))
+            cur.execute('INSERT INTO users (name) VALUES (%s)', (name,))
             conn.commit()
-        except sqlite3.IntegrityError:
-            pass  # name taken — silently skip
+        except psycopg2.IntegrityError:
+            conn.rollback()
+        cur.close()
         conn.close()
     return redirect(url_for('index'))
 
@@ -138,10 +152,12 @@ def add_user():
 @app.route('/log', methods=['GET', 'POST'])
 def log_climb():
     conn  = get_db()
-    users = conn.execute('SELECT * FROM users ORDER BY name').fetchall()
-    active_sessions = conn.execute(
-        'SELECT * FROM sessions WHERE ended_at IS NULL ORDER BY started_at DESC'
-    ).fetchall()
+    cur   = conn.cursor()
+    cur.execute('SELECT * FROM users ORDER BY name')
+    users = cur.fetchall()
+    cur.execute('SELECT * FROM sessions WHERE ended_at IS NULL ORDER BY started_at DESC')
+    active_sessions = cur.fetchall()
+    cur.close()
     conn.close()
 
     if request.method == 'POST':
@@ -192,21 +208,26 @@ def log_climb():
         # Verify session is still open
         if session_id is not None:
             conn = get_db()
-            valid = conn.execute(
-                'SELECT id FROM sessions WHERE id = ? AND ended_at IS NULL', (session_id,)
-            ).fetchone()
+            cur  = conn.cursor()
+            cur.execute(
+                'SELECT id FROM sessions WHERE id = %s AND ended_at IS NULL', (session_id,)
+            )
+            valid = cur.fetchone()
+            cur.close()
             conn.close()
             if valid is None:
                 session_id = None
 
         points = GRADE_MAP[grade]['points']
         conn = get_db()
-        conn.execute(
+        cur  = conn.cursor()
+        cur.execute(
             'INSERT INTO climbs (user_id, session_id, grade_color, climb_type, style, holds, points, flashed, attempts) '
-            'VALUES (?,?,?,?,?,?,?,?,?)',
+            'VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)',
             (user_id, session_id, grade, ctype, style, json.dumps(holds), points, flashed, attempts)
         )
         conn.commit()
+        cur.close()
         conn.close()
         if session_id:
             return redirect(url_for('session_detail', session_id=session_id))
@@ -224,9 +245,13 @@ def leaderboard():
     if sort_by not in VALID_SORTS:
         sort_by = 'total_points'
 
-    conn       = get_db()
-    users      = conn.execute('SELECT * FROM users').fetchall()
-    all_climbs = conn.execute('SELECT * FROM climbs').fetchall()
+    conn = get_db()
+    cur  = conn.cursor()
+    cur.execute('SELECT * FROM users')
+    users = cur.fetchall()
+    cur.execute('SELECT * FROM climbs')
+    all_climbs = cur.fetchall()
+    cur.close()
     conn.close()
 
     stats = {
@@ -290,9 +315,12 @@ def delete_climb(climb_id):
     if not is_admin():
         return redirect(url_for('admin_login'))
     conn = get_db()
-    row  = conn.execute('SELECT session_id FROM climbs WHERE id = ?', (climb_id,)).fetchone()
-    conn.execute('DELETE FROM climbs WHERE id = ?', (climb_id,))
+    cur  = conn.cursor()
+    cur.execute('SELECT session_id FROM climbs WHERE id = %s', (climb_id,))
+    row  = cur.fetchone()
+    cur.execute('DELETE FROM climbs WHERE id = %s', (climb_id,))
     conn.commit()
+    cur.close()
     conn.close()
     if row and row['session_id']:
         return redirect(url_for('session_detail', session_id=row['session_id']))
@@ -304,9 +332,11 @@ def delete_session(session_id):
     if not is_admin():
         return redirect(url_for('admin_login'))
     conn = get_db()
-    conn.execute('DELETE FROM climbs   WHERE session_id = ?', (session_id,))
-    conn.execute('DELETE FROM sessions WHERE id = ?',         (session_id,))
+    cur  = conn.cursor()
+    cur.execute('DELETE FROM climbs   WHERE session_id = %s', (session_id,))
+    cur.execute('DELETE FROM sessions WHERE id = %s',         (session_id,))
     conn.commit()
+    cur.close()
     conn.close()
     return redirect(url_for('sessions'))
 
@@ -316,7 +346,8 @@ def delete_session(session_id):
 @app.route('/sessions')
 def sessions():
     conn = get_db()
-    rows = conn.execute('''
+    cur  = conn.cursor()
+    cur.execute('''
         SELECT s.*,
                COUNT(c.id)                AS climb_count,
                COALESCE(SUM(c.points), 0) AS total_points
@@ -324,7 +355,9 @@ def sessions():
         LEFT   JOIN climbs c ON c.session_id = s.id
         GROUP  BY s.id
         ORDER  BY s.started_at DESC
-    ''').fetchall()
+    ''')
+    rows = cur.fetchall()
+    cur.close()
     conn.close()
     return render_template('sessions.html', sessions=rows)
 
@@ -334,27 +367,34 @@ def start_session():
     gym   = request.form.get('gym_name', '').strip()[:100] or 'The Wall'
     notes = request.form.get('notes', '').strip()[:500]
     conn  = get_db()
-    cur   = conn.execute('INSERT INTO sessions (gym_name, notes) VALUES (?, ?)', (gym, notes))
-    sid   = cur.lastrowid
+    cur   = conn.cursor()
+    cur.execute('INSERT INTO sessions (gym_name, notes) VALUES (%s, %s) RETURNING id', (gym, notes))
+    sid   = cur.fetchone()['id']
     conn.commit()
+    cur.close()
     conn.close()
     return redirect(url_for('session_detail', session_id=sid))
 
 
 @app.route('/session/<int:session_id>')
 def session_detail(session_id):
-    conn    = get_db()
-    session = conn.execute('SELECT * FROM sessions WHERE id = ?', (session_id,)).fetchone()
+    conn = get_db()
+    cur  = conn.cursor()
+    cur.execute('SELECT * FROM sessions WHERE id = %s', (session_id,))
+    session = cur.fetchone()
     if session is None:
+        cur.close()
         conn.close()
         return redirect(url_for('sessions'))
-    climbs = conn.execute('''
+    cur.execute('''
         SELECT c.*, u.name AS climber
         FROM   climbs c
         JOIN   users  u ON c.user_id = u.id
-        WHERE  c.session_id = ?
+        WHERE  c.session_id = %s
         ORDER  BY c.date ASC
-    ''', (session_id,)).fetchall()
+    ''', (session_id,))
+    climbs = cur.fetchall()
+    cur.close()
     conn.close()
     climber_stats = {}
     total_points  = 0
@@ -376,11 +416,13 @@ def session_detail(session_id):
 @app.route('/end_session/<int:session_id>', methods=['POST'])
 def end_session(session_id):
     conn = get_db()
-    conn.execute(
-        'UPDATE sessions SET ended_at = CURRENT_TIMESTAMP WHERE id = ? AND ended_at IS NULL',
+    cur  = conn.cursor()
+    cur.execute(
+        'UPDATE sessions SET ended_at = CURRENT_TIMESTAMP WHERE id = %s AND ended_at IS NULL',
         (session_id,)
     )
     conn.commit()
+    cur.close()
     conn.close()
     return redirect(url_for('session_detail', session_id=session_id))
 
@@ -391,31 +433,37 @@ def end_session(session_id):
 def stats():
     conn = get_db()
 
+    cur = conn.cursor()
     # Record single day: user with most climbs in one calendar day
-    record_day = conn.execute('''
+    cur.execute('''
         SELECT u.name, DATE(c.date) AS day, COUNT(*) AS cnt
         FROM   climbs c
         JOIN   users  u ON c.user_id = u.id
-        GROUP  BY c.user_id, DATE(c.date)
+        GROUP  BY c.user_id, u.name, DATE(c.date)
         ORDER  BY cnt DESC
         LIMIT  1
-    ''').fetchone()
+    ''')
+    record_day = cur.fetchone()
 
     # Best session haul: user with most points in a single session
-    best_session = conn.execute('''
+    cur.execute('''
         SELECT u.name, s.gym_name, s.started_at,
                SUM(c.points) AS pts, COUNT(c.id) AS cnt
         FROM   climbs   c
         JOIN   users    u ON c.user_id    = u.id
         JOIN   sessions s ON c.session_id = s.id
         WHERE  c.session_id IS NOT NULL
-        GROUP  BY c.user_id, c.session_id
+        GROUP  BY c.user_id, c.session_id, u.name, s.gym_name, s.started_at
         ORDER  BY pts DESC
         LIMIT  1
-    ''').fetchone()
+    ''')
+    best_session = cur.fetchone()
 
-    users      = conn.execute('SELECT * FROM users ORDER BY name').fetchall()
-    all_climbs = conn.execute('SELECT * FROM climbs').fetchall()
+    cur.execute('SELECT * FROM users ORDER BY name')
+    users = cur.fetchall()
+    cur.execute('SELECT * FROM climbs')
+    all_climbs = cur.fetchall()
+    cur.close()
     conn.close()
 
     grade_order = [g['key'] for g in GRADE_COLORS]  # ascending difficulty
@@ -455,29 +503,35 @@ def stats():
 @app.route('/climber/<int:user_id>')
 def climber_profile(user_id):
     conn = get_db()
-    user = conn.execute('SELECT * FROM users WHERE id = ?', (user_id,)).fetchone()
+    cur  = conn.cursor()
+    cur.execute('SELECT * FROM users WHERE id = %s', (user_id,))
+    user = cur.fetchone()
     if user is None:
+        cur.close()
         conn.close()
         return redirect(url_for('stats'))
 
-    climbs = conn.execute('''
+    cur.execute('''
         SELECT c.*, s.gym_name AS session_gym
         FROM   climbs c
         LEFT   JOIN sessions s ON c.session_id = s.id
-        WHERE  c.user_id = ?
+        WHERE  c.user_id = %s
         ORDER  BY c.date ASC
-    ''', (user_id,)).fetchall()
+    ''', (user_id,))
+    climbs = cur.fetchall()
 
     # Sessions this climber attended (with their personal totals)
-    session_rows = conn.execute('''
+    cur.execute('''
         SELECT s.id, s.gym_name, s.started_at, s.ended_at,
                COUNT(c.id)                AS climb_count,
                COALESCE(SUM(c.points), 0) AS session_points
         FROM   sessions s
-        JOIN   climbs   c ON c.session_id = s.id AND c.user_id = ?
+        JOIN   climbs   c ON c.session_id = s.id AND c.user_id = %s
         GROUP  BY s.id
         ORDER  BY s.started_at DESC
-    ''', (user_id,)).fetchall()
+    ''', (user_id,))
+    session_rows = cur.fetchall()
+    cur.close()
     conn.close()
 
     total_climbs  = len(climbs)
