@@ -4,6 +4,8 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 from psycopg2 import pool as pg_pool
 from flask import Flask, render_template, request, redirect, url_for, session as flask_session, g
+from dotenv import load_dotenv
+load_dotenv()
 
 app = Flask(__name__)
 _db_url = os.environ.get('DATABASE_URL', '')
