@@ -19,13 +19,13 @@ ADMIN_PASSWORD   = os.environ.get('ADMIN_PASSWORD', '')
 # Points use a progressive scale that meaningfully rewards harder sends.
 GRADE_COLORS = [
     {'key': 'orange', 'label': 'Orange', 'grade': 'VB',    'points':  1, 'hex': '#FF7700', 'text': '#fff'},
-    {'key': 'yellow', 'label': 'Yellow', 'grade': 'V0–V2', 'points':  3, 'hex': '#FFD700', 'text': '#111'},
+    {'key': 'yellow', 'label': 'Yellow', 'grade': 'V0–V2', 'points':  3, 'hex': '#FFD700', 'text': '#fff'},
     {'key': 'green',  'label': 'Green',  'grade': 'V1–V3', 'points':  6, 'hex': '#27AE60', 'text': '#fff'},
     {'key': 'blue',   'label': 'Blue',   'grade': 'V2–V4', 'points': 10, 'hex': '#2980B9', 'text': '#fff'},
     {'key': 'purple', 'label': 'Purple', 'grade': 'V3–V5', 'points': 15, 'hex': '#8E44AD', 'text': '#fff'},
     {'key': 'red',    'label': 'Red',    'grade': 'V4–V6', 'points': 21, 'hex': '#E74C3C', 'text': '#fff'},
-    {'key': 'black',  'label': 'Black',  'grade': 'V5–V7', 'points': 30, 'hex': '#222222', 'text': '#fff'},
-    {'key': 'white',  'label': 'White',  'grade': 'V7+',   'points': 50, 'hex': '#E8E8E8', 'text': '#111'},
+    {'key': 'black',  'label': 'Black',  'grade': 'V5–V7', 'points': 30, 'hex': '#909090', 'text': '#fff'},
+    {'key': 'white',  'label': 'White',  'grade': 'V7+',   'points': 50, 'hex': '#E8E8E8', 'text': '#fff'},
 ]
 
 GRADE_MAP    = {g['key']: g for g in GRADE_COLORS}
