@@ -55,10 +55,9 @@
 
 </div>
 
-{% if hardest_rows %}
-<h2 style="margin: 1.75rem 0 0.8rem;">Hardest Grade Sent</h2>
+<h2 style="margin: 1.75rem 0 0.8rem;">Most Sends Per Grade</h2>
 <div class="card" style="padding:0; overflow:hidden;">
-  {% for row in hardest_rows %}
+  {% for row in most_sends_per_grade %}
   <div class="feed-item" style="padding: 0.8rem 1.25rem;">
     <span class="gbadge"
           style="background:{{ row.grade.hex }}22; color:{{ row.grade.hex }}; border-color:{{ row.grade.hex }}44; font-size:0.85rem; padding:0.25rem 0.7rem;">
@@ -66,12 +65,16 @@
       {{ row.grade.label }} &middot; {{ row.grade.grade }}
     </span>
     <div class="feed-body" style="text-align:right;">
+      {% if row.name %}
       <div style="font-weight:600;">{{ row.name }}</div>
+      <div style="color:var(--muted); font-size:0.82rem;">{{ row.count }} send{{ 's' if row.count != 1 else '' }}</div>
+      {% else %}
+      <div style="color:var(--muted); font-size:0.82rem; font-style:italic;">No sends yet</div>
+      {% endif %}
     </div>
   </div>
   {% endfor %}
 </div>
-{% endif %}
 
 {% if not record_day and not best_session_pts %}
 <div class="card empty-state">

@@ -132,6 +132,29 @@ def init_db():
     cur.close()
 
 
+# ── Achievements definition ───────────────────────────────────────────────────
+
+ACHIEVEMENTS = [
+    {'id': 'first_climb',  'name': 'First Step',       'emoji': '🧗', 'desc': 'Log your very first climb'},
+    {'id': 'first_flash',  'name': 'Flash!',            'emoji': '⚡', 'desc': 'Flash a climb on your first attempt'},
+    {'id': 'climbs_10',    'name': '10 Sends',          'emoji': '🔟', 'desc': 'Log 10 climbs'},
+    {'id': 'climbs_50',    'name': '50 Sends',          'emoji': '🏅', 'desc': 'Log 50 climbs'},
+    {'id': 'climbs_100',   'name': 'Century Club',      'emoji': '💯', 'desc': 'Log 100 climbs'},
+    {'id': 'pts_100',      'name': 'Point Collector',   'emoji': '⭐', 'desc': 'Earn 100 points total'},
+    {'id': 'pts_500',      'name': 'Point Hoarder',     'emoji': '🌟', 'desc': 'Earn 500 points total'},
+    {'id': 'pts_1000',     'name': 'Point Legend',      'emoji': '👑', 'desc': 'Earn 1000 points total'},
+    {'id': 'flashes_10',   'name': 'Flash Master',      'emoji': '⚡🔟', 'desc': 'Flash 10 climbs'},
+    {'id': 'first_orange', 'name': 'Orange Sent',       'emoji': '🟠', 'desc': 'Send your first orange'},
+    {'id': 'first_yellow', 'name': 'Yellow Sent',       'emoji': '🟡', 'desc': 'Send your first yellow'},
+    {'id': 'first_green',  'name': 'Going Green',       'emoji': '🟢', 'desc': 'Send your first green'},
+    {'id': 'first_blue',   'name': 'Blue Streak',       'emoji': '🔵', 'desc': 'Send your first blue'},
+    {'id': 'first_purple', 'name': 'Pretty Purple',     'emoji': '🟣', 'desc': 'Send your first purple'},
+    {'id': 'first_red',    'name': 'Red Alert',         'emoji': '🔴', 'desc': 'Send your first red'},
+    {'id': 'first_black',  'name': 'Into the Dark',     'emoji': '⚫', 'desc': 'Send your first black'},
+    {'id': 'first_white',  'name': 'Top of the World',  'emoji': '🤍', 'desc': 'Send your first white'},
+]
+
+
 # ── Admin helpers ────────────────────────────────────────────────────────────
 
 def is_admin():
@@ -139,8 +162,19 @@ def is_admin():
 
 
 @app.context_processor
-def inject_admin():
-    return {'is_admin': is_admin()}
+def inject_globals():
+    climber_id   = flask_session.get('climber_id')
+    climber_name = flask_session.get('climber_name')
+    current_climber = {'id': climber_id, 'name': climber_name} if climber_id else None
+    try:
+        conn = get_db()
+        cur  = conn.cursor()
+        cur.execute('SELECT id, name FROM users ORDER BY name')
+        all_users = cur.fetchall()
+        cur.close()
+    except Exception:
+        all_users = []
+    return {'is_admin': is_admin(), 'current_climber': current_climber, 'all_users': all_users}
 
 
 # ── Template helpers ──────────────────────────────────────────────────────────
@@ -354,6 +388,34 @@ def admin_login():
 def admin_logout():
     flask_session.pop('is_admin', None)
     return redirect(url_for('index'))
+
+
+# ── Climber identity routes ──────────────────────────────────────────────────
+
+@app.route('/set_climber', methods=['POST'])
+def set_climber():
+    next_url = request.form.get('next', '') or url_for('index')
+    try:
+        climber_id = int(request.form.get('climber_id', ''))
+    except (ValueError, TypeError):
+        return redirect(next_url)
+    conn = get_db()
+    cur  = conn.cursor()
+    cur.execute('SELECT id, name FROM users WHERE id = %s', (climber_id,))
+    user = cur.fetchone()
+    cur.close()
+    if user:
+        flask_session['climber_id']   = user['id']
+        flask_session['climber_name'] = user['name']
+    return redirect(next_url)
+
+
+@app.route('/clear_climber', methods=['POST'])
+def clear_climber():
+    flask_session.pop('climber_id',   None)
+    flask_session.pop('climber_name', None)
+    next_url = request.form.get('next', '') or url_for('index')
+    return redirect(next_url)
 
 
 @app.route('/admin/rename_user/<int:user_id>', methods=['POST'])
@@ -578,35 +640,46 @@ def records():
     ''')
     most_flashes = cur.fetchone()
 
-    # Hardest grade ever sent (per-user: the highest grade colour each person has sent)
+    # Most sends per grade (for each grade: who has the most sends and how many)
     cur.execute('SELECT * FROM users ORDER BY name')
     users = cur.fetchall()
-    cur.execute('SELECT user_id, grade_color FROM climbs')
-    all_climbs = cur.fetchall()
+    cur.execute('SELECT user_id, grade_color, COUNT(*) AS cnt FROM climbs GROUP BY user_id, grade_color')
+    grade_climb_rows = cur.fetchall()
     cur.close()
 
-    grade_order = [g['key'] for g in GRADE_COLORS]
-    best_grades = {}
-    for c in all_climbs:
-        uid, color = c['user_id'], c['grade_color']
-        if color not in GRADE_MAP:
-            continue
-        prev = best_grades.get(uid)
-        if prev is None or grade_order.index(color) > grade_order.index(prev):
-            best_grades[uid] = color
-
     user_map = {u['id']: u['name'] for u in users}
-    hardest_rows = sorted(
-        [{'name': user_map[uid], 'grade': GRADE_MAP[col]} for uid, col in best_grades.items() if uid in user_map],
-        key=lambda x: grade_order.index(x['grade']['key']), reverse=True
-    )
+
+    # group counts by grade
+    grade_user_counts = {}
+    for row in grade_climb_rows:
+        col = row['grade_color']
+        if col not in GRADE_MAP:
+            continue
+        grade_user_counts.setdefault(col, []).append((row['user_id'], row['cnt']))
+
+    most_sends_per_grade = []
+    for g in reversed(GRADE_COLORS):
+        entries = grade_user_counts.get(g['key'], [])
+        if not entries:
+            most_sends_per_grade.append({
+                'grade': GRADE_MAP[g['key']],
+                'name': None,
+                'count': 0,
+            })
+        else:
+            best_uid, best_cnt = max(entries, key=lambda x: x[1])
+            most_sends_per_grade.append({
+                'grade': GRADE_MAP[g['key']],
+                'name': user_map.get(best_uid),
+                'count': best_cnt,
+            })
 
     return render_template('records.html',
                            record_day=record_day,
                            best_session_pts=best_session_pts,
                            best_session_cnt=best_session_cnt,
                            most_flashes=most_flashes,
-                           hardest_rows=hardest_rows)
+                           most_sends_per_grade=most_sends_per_grade)
 
 
 @app.route('/stats')
@@ -648,6 +721,60 @@ def stats():
 
     return render_template('stats.html',
                            user_rows=user_rows)
+
+
+# ── Achievements ─────────────────────────────────────────────────────────────
+
+@app.route('/achievements')
+def achievements():
+    climber_id = flask_session.get('climber_id')
+    if not climber_id:
+        return redirect(url_for('index'))
+
+    conn = get_db()
+    cur  = conn.cursor()
+    cur.execute('SELECT * FROM users WHERE id = %s', (climber_id,))
+    user = cur.fetchone()
+    if user is None:
+        flask_session.pop('climber_id',   None)
+        flask_session.pop('climber_name', None)
+        cur.close()
+        return redirect(url_for('index'))
+
+    cur.execute('SELECT * FROM climbs WHERE user_id = %s ORDER BY date ASC', (climber_id,))
+    climbs = cur.fetchall()
+    cur.close()
+
+    total_climbs  = len(climbs)
+    total_points  = sum(c['points'] for c in climbs)
+    total_flashes = sum(1 for c in climbs if c['flashed'])
+    grades_sent   = {c['grade_color'] for c in climbs}
+
+    def unlocked(aid):
+        if aid == 'first_climb':  return total_climbs  >= 1
+        if aid == 'first_flash':  return total_flashes >= 1
+        if aid == 'climbs_10':    return total_climbs  >= 10
+        if aid == 'climbs_50':    return total_climbs  >= 50
+        if aid == 'climbs_100':   return total_climbs  >= 100
+        if aid == 'pts_100':      return total_points  >= 100
+        if aid == 'pts_500':      return total_points  >= 500
+        if aid == 'pts_1000':     return total_points  >= 1000
+        if aid == 'flashes_10':   return total_flashes >= 10
+        if aid.startswith('first_'):
+            return aid[len('first_'):] in grades_sent
+        return False
+
+    result = [dict(a, unlocked=unlocked(a['id'])) for a in ACHIEVEMENTS]
+    unlocked_count = sum(1 for a in result if a['unlocked'])
+
+    return render_template('achievements.html',
+                           user=user,
+                           achievements=result,
+                           unlocked_count=unlocked_count,
+                           total_count=len(ACHIEVEMENTS),
+                           total_climbs=total_climbs,
+                           total_points=total_points,
+                           total_flashes=total_flashes)
 
 
 # ── Climber profile ──────────────────────────────────────────────────────────

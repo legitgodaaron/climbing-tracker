@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block title %}Achievements — {{ user.name }}{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <div>
+    <h1>🏆 Achievements</h1>
+    <div style="color:var(--muted); font-size:0.88rem; margin-top:0.25rem;">{{ user.name }}</div>
+  </div>
+  <a href="/climber/{{ user.id }}" class="btn btn-secondary">📊 My Profile</a>
+</div>
+
+<!-- Progress bar -->
+<div class="card" style="margin-bottom:1.5rem; padding:1rem 1.4rem;">
+  <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:0.6rem;">
+    <span style="font-weight:700;">{{ unlocked_count }} / {{ total_count }} unlocked</span>
+    <span style="color:var(--muted); font-size:0.83rem;">
+      {{ total_climbs }} climb{{ 's' if total_climbs != 1 else '' }} &middot;
+      {{ total_points }} pts &middot;
+      {{ total_flashes }} flash{{ 'es' if total_flashes != 1 else '' }}
+    </span>
+  </div>
+  <div style="background:var(--surf2); border-radius:999px; height:8px; overflow:hidden;">
+    <div style="height:100%; border-radius:999px; background:var(--accent);
+                width:{{ (unlocked_count / total_count * 100)|int }}%;
+                transition:width 0.4s;"></div>
+  </div>
+</div>
+
+<!-- Unlocked -->
+{% set unlocked_list = achievements | selectattr('unlocked') | list %}
+{% if unlocked_list %}
+<h2 style="margin-bottom:0.8rem;">✅ Unlocked</h2>
+<div class="achievement-grid">
+  {% for a in unlocked_list %}
+  <div class="achievement-card unlocked">
+    <div class="ach-emoji">{{ a.emoji }}</div>
+    <div class="ach-name">{{ a.name }}</div>
+    <div class="ach-desc">{{ a.desc }}</div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- Locked -->
+{% set locked_list = achievements | rejectattr('unlocked') | list %}
+{% if locked_list %}
+<h2 style="margin: 1.5rem 0 0.8rem;">🔒 Locked</h2>
+<div class="achievement-grid">
+  {% for a in locked_list %}
+  <div class="achievement-card locked">
+    <div class="ach-emoji" style="filter:grayscale(1); opacity:0.35;">{{ a.emoji }}</div>
+    <div class="ach-name" style="color:var(--muted);">{{ a.name }}</div>
+    <div class="ach-desc">{{ a.desc }}</div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<style>
+  .achievement-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 0.75rem;
+    margin-bottom: 0.5rem;
+  }
+  .achievement-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.1rem 1rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 0.35rem;
+  }
+  .achievement-card.unlocked {
+    border-color: rgba(124,108,255,0.4);
+    background: rgba(124,108,255,0.06);
+  }
+  .ach-emoji { font-size: 2rem; line-height: 1; }
+  .ach-name  { font-weight: 700; font-size: 0.88rem; }
+  .ach-desc  { color: var(--muted); font-size: 0.75rem; }
+</style>
+
+{% endblock %}

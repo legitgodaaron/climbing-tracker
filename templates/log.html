@@ -20,7 +20,8 @@
       <div class="climber-picker" id="climber-picker">
         {% for u in users %}
         <label class="climber-opt">
-          <input type="radio" name="user_id" value="{{ u.id }}" required>
+          <input type="radio" name="user_id" value="{{ u.id }}" required
+                 {% if current_climber and current_climber.id == u.id %}checked{% endif %}>
           <span class="climber-avatar">{{ u.name[0].upper() }}</span>
           <span class="climber-name">{{ u.name }}</span>
         </label>
