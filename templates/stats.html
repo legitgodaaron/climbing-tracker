@@ -26,7 +26,7 @@
     <div class="record-body">
       <div class="record-val" style="color:var(--accent);">{{ best_session.pts }}<span style="font-size:1rem; font-weight:600;">&thinsp;pts</span></div>
       <div class="record-lbl">best session haul</div>
-      <div class="record-who">{{ best_session.name }} &middot; {{ best_session.gym_name }} &middot; {{ best_session.started_at[:10] }}</div>
+      <div class="record-who">{{ best_session.name }} &middot; {{ best_session.gym_name }} &middot; {{ best_session.started_at.strftime('%Y-%m-%d') }}</div>
     </div>
   </div>
   {% endif %}
