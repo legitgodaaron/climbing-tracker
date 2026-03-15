@@ -532,20 +532,19 @@
     @media (max-width: 700px) {
       /* Hide desktop nav links + desktop right group */
       nav .nav-link { display: none; }
-      nav { padding: 0 0.9rem; gap: 0.6rem; position: relative; }
+      nav { padding: 0 0.9rem; gap: 0.6rem; }
       .nav-desktop-right { display: none; }
 
       /* Show hamburger + avatar */
       .nav-hamburger { display: flex; }
       .nav-mobile-avatar { display: flex; align-items: center; }
 
-      /* Center the Log Climb button absolutely in the nav bar */
+      /* Center the Log Climb button in remaining nav space */
       .nav-mobile-log {
+        flex: 1;
         display: flex;
+        justify-content: center;
         align-items: center;
-        position: absolute;
-        left: 50%;
-        transform: translateX(-50%);
         padding: 0.45rem 0.9rem !important;
         font-size: 0.85rem !important;
         min-height: unset !important;
