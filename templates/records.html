@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% block title %}Records — ClimbTracker{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1>🎖️ Records</h1>
+  <a href="/stats" class="btn btn-secondary">📊 Stats</a>
+</div>
+
+<div class="stats-records">
+
+  {% if record_day %}
+  <div class="record-card">
+    <div class="record-icon">📅</div>
+    <div class="record-body">
+      <div class="record-val">{{ record_day.cnt }}</div>
+      <div class="record-lbl">Most climbs in one day</div>
+      <div class="record-who">{{ record_day.name }} &middot; {{ record_day.day }}</div>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if best_session_pts %}
+  <div class="record-card">
+    <div class="record-icon">⚡</div>
+    <div class="record-body">
+      <div class="record-val" style="color:var(--accent);">{{ best_session_pts.pts }}<span style="font-size:1rem; font-weight:600;">&thinsp;pts</span></div>
+      <div class="record-lbl">Best session (points)</div>
+      <div class="record-who">{{ best_session_pts.name }} &middot; {{ best_session_pts.gym_name }} &middot; {{ best_session_pts.started_at.strftime('%Y-%m-%d') }}</div>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if best_session_cnt %}
+  <div class="record-card">
+    <div class="record-icon">🔢</div>
+    <div class="record-body">
+      <div class="record-val">{{ best_session_cnt.cnt }}</div>
+      <div class="record-lbl">Most climbs in one session</div>
+      <div class="record-who">{{ best_session_cnt.name }} &middot; {{ best_session_cnt.gym_name }} &middot; {{ best_session_cnt.started_at.strftime('%Y-%m-%d') }}</div>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if most_flashes and most_flashes.flashes %}
+  <div class="record-card">
+    <div class="record-icon">⚡🎯</div>
+    <div class="record-body">
+      <div class="record-val" style="color:#FFD700;">{{ most_flashes.flashes }}</div>
+      <div class="record-lbl">Most flashes in one session</div>
+      <div class="record-who">{{ most_flashes.name }} &middot; {{ most_flashes.gym_name }} &middot; {{ most_flashes.started_at.strftime('%Y-%m-%d') }}</div>
+    </div>
+  </div>
+  {% endif %}
+
+</div>
+
+{% if hardest_rows %}
+<h2 style="margin: 1.75rem 0 0.8rem;">Hardest Grade Sent</h2>
+<div class="card" style="padding:0; overflow:hidden;">
+  {% for row in hardest_rows %}
+  <div class="feed-item" style="padding: 0.8rem 1.25rem;">
+    <span class="gbadge"
+          style="background:{{ row.grade.hex }}22; color:{{ row.grade.hex }}; border-color:{{ row.grade.hex }}44; font-size:0.85rem; padding:0.25rem 0.7rem;">
+      <span class="gbadge-dot" style="background:{{ row.grade.hex }};"></span>
+      {{ row.grade.label }} &middot; {{ row.grade.grade }}
+    </span>
+    <div class="feed-body" style="text-align:right;">
+      <div style="font-weight:600;">{{ row.name }}</div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if not record_day and not best_session_pts %}
+<div class="card empty-state">
+  No records yet — go climb something! <a href="/log">Log a climb</a>
+</div>
+{% endif %}
+
+<style>
+  .stats-records {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 1rem;
+    margin-bottom: 0.5rem;
+  }
+  .record-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.25rem 1.4rem;
+    display: flex;
+    align-items: flex-start;
+    gap: 1rem;
+  }
+  .record-icon { font-size: 1.6rem; flex-shrink: 0; margin-top: .15rem; }
+  .record-val  { font-size: 2rem; font-weight: 800; line-height: 1; }
+  .record-lbl  { color: var(--muted); font-size: 0.8rem; margin-top: .15rem; text-transform: uppercase; letter-spacing: .05em; font-weight: 600; }
+  .record-who  { font-size: 0.82rem; margin-top: .4rem; color: var(--text); opacity: .75; }
+</style>
+
+{% endblock %}

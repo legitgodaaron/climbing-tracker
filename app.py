@@ -520,12 +520,12 @@ def end_session(session_id):
 
 # ── Stats route ───────────────────────────────────────────────────────────────
 
-@app.route('/stats')
-def stats():
+@app.route('/records')
+def records():
     conn = get_db()
+    cur  = conn.cursor()
 
-    cur = conn.cursor()
-    # Record single day: user with most climbs in one calendar day
+    # Most climbs in a single calendar day
     cur.execute('''
         SELECT u.name, DATE(c.date) AS day, COUNT(*) AS cnt
         FROM   climbs c
@@ -536,7 +536,7 @@ def stats():
     ''')
     record_day = cur.fetchone()
 
-    # Best session haul: user with most points in a single session
+    # Best session by points
     cur.execute('''
         SELECT u.name, s.gym_name, s.started_at,
                SUM(c.points) AS pts, COUNT(c.id) AS cnt
@@ -548,8 +548,72 @@ def stats():
         ORDER  BY pts DESC
         LIMIT  1
     ''')
-    best_session = cur.fetchone()
+    best_session_pts = cur.fetchone()
 
+    # Best session by climb count
+    cur.execute('''
+        SELECT u.name, s.gym_name, s.started_at,
+               COUNT(c.id) AS cnt, SUM(c.points) AS pts
+        FROM   climbs   c
+        JOIN   users    u ON c.user_id    = u.id
+        JOIN   sessions s ON c.session_id = s.id
+        WHERE  c.session_id IS NOT NULL
+        GROUP  BY c.user_id, c.session_id, u.name, s.gym_name, s.started_at
+        ORDER  BY cnt DESC
+        LIMIT  1
+    ''')
+    best_session_cnt = cur.fetchone()
+
+    # Most flashes in a single session
+    cur.execute('''
+        SELECT u.name, s.gym_name, s.started_at,
+               SUM(c.flashed) AS flashes
+        FROM   climbs   c
+        JOIN   users    u ON c.user_id    = u.id
+        JOIN   sessions s ON c.session_id = s.id
+        WHERE  c.session_id IS NOT NULL
+        GROUP  BY c.user_id, c.session_id, u.name, s.gym_name, s.started_at
+        ORDER  BY flashes DESC
+        LIMIT  1
+    ''')
+    most_flashes = cur.fetchone()
+
+    # Hardest grade ever sent (per-user: the highest grade colour each person has sent)
+    cur.execute('SELECT * FROM users ORDER BY name')
+    users = cur.fetchall()
+    cur.execute('SELECT user_id, grade_color FROM climbs')
+    all_climbs = cur.fetchall()
+    cur.close()
+
+    grade_order = [g['key'] for g in GRADE_COLORS]
+    best_grades = {}
+    for c in all_climbs:
+        uid, color = c['user_id'], c['grade_color']
+        if color not in GRADE_MAP:
+            continue
+        prev = best_grades.get(uid)
+        if prev is None or grade_order.index(color) > grade_order.index(prev):
+            best_grades[uid] = color
+
+    user_map = {u['id']: u['name'] for u in users}
+    hardest_rows = sorted(
+        [{'name': user_map[uid], 'grade': GRADE_MAP[col]} for uid, col in best_grades.items() if uid in user_map],
+        key=lambda x: grade_order.index(x['grade']['key']), reverse=True
+    )
+
+    return render_template('records.html',
+                           record_day=record_day,
+                           best_session_pts=best_session_pts,
+                           best_session_cnt=best_session_cnt,
+                           most_flashes=most_flashes,
+                           hardest_rows=hardest_rows)
+
+
+@app.route('/stats')
+def stats():
+    conn = get_db()
+
+    cur = conn.cursor()
     cur.execute('SELECT * FROM users ORDER BY name')
     users = cur.fetchall()
     cur.execute('SELECT * FROM climbs')
@@ -583,8 +647,6 @@ def stats():
                        key=lambda x: x['total_points'], reverse=True)
 
     return render_template('stats.html',
-                           record_day=record_day,
-                           best_session=best_session,
                            user_rows=user_rows)
 
 

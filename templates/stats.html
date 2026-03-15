@@ -4,33 +4,7 @@
 
 <div class="page-header">
   <h1>📊 Stats</h1>
-</div>
-
-<!-- ── Record cards ─────────────────────────────────────────── -->
-<div class="stats-records">
-
-  {% if record_day %}
-  <div class="record-card">
-    <div class="record-icon">📅</div>
-    <div class="record-body">
-      <div class="record-val">{{ record_day.cnt }}</div>
-      <div class="record-lbl">climbs in one day</div>
-      <div class="record-who">{{ record_day.name }} &middot; {{ record_day.day }}</div>
-    </div>
-  </div>
-  {% endif %}
-
-  {% if best_session %}
-  <div class="record-card">
-    <div class="record-icon">⚡</div>
-    <div class="record-body">
-      <div class="record-val" style="color:var(--accent);">{{ best_session.pts }}<span style="font-size:1rem; font-weight:600;">&thinsp;pts</span></div>
-      <div class="record-lbl">best session haul</div>
-      <div class="record-who">{{ best_session.name }} &middot; {{ best_session.gym_name }} &middot; {{ best_session.started_at.strftime('%Y-%m-%d') }}</div>
-    </div>
-  </div>
-  {% endif %}
-
+  <a href="/records" class="btn btn-secondary">🎖️ Records</a>
 </div>
 
 <!-- ── Per-climber breakdown ─────────────────────────────────── -->
