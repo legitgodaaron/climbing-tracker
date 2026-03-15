@@ -456,6 +456,19 @@
       transition: opacity 0.15s;
     }
 
+    /* ── Mobile nav extras ───────────────────────────────────── */
+    .nav-desktop-right { display: flex; margin-left: auto; align-items: center; gap: .6rem; }
+    .nav-mobile-log    { display: none; }
+    .nav-mobile-avatar {
+      display: none;
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 0.2rem;
+      line-height: 1;
+      flex-shrink: 0;
+    }
+
     /* ── Drawer (slide-in menu) ──────────────────────────────── */
     .drawer-overlay {
       display: none;
@@ -517,12 +530,26 @@
 
     /* ── Mobile tweaks ───────────────────────────────────────────── */
     @media (max-width: 700px) {
-      /* Hide desktop nav links */
+      /* Hide desktop nav links + desktop right group */
       nav .nav-link { display: none; }
-      nav { padding: 0 0.9rem; gap: 0.6rem; }
+      nav { padding: 0 0.9rem; gap: 0.6rem; position: relative; }
+      .nav-desktop-right { display: none; }
 
-      /* Show hamburger */
+      /* Show hamburger + avatar */
       .nav-hamburger { display: flex; }
+      .nav-mobile-avatar { display: flex; align-items: center; }
+
+      /* Center the Log Climb button absolutely in the nav bar */
+      .nav-mobile-log {
+        display: flex;
+        align-items: center;
+        position: absolute;
+        left: 50%;
+        transform: translateX(-50%);
+        padding: 0.45rem 0.9rem !important;
+        font-size: 0.85rem !important;
+        min-height: unset !important;
+      }
 
       .opt-card {
         padding: 0.75rem 0.8rem;
@@ -737,8 +764,8 @@ function bulkClear() {
     {% if current_climber %}
     <a href="/achievements" class="nav-link {% if request.endpoint == 'achievements' %}active{% endif %}">🏆 Achievements</a>
     {% endif %}
-    <!-- Right-side group: climber chip + admin -->
-    <span style="margin-left:auto; display:flex; align-items:center; gap:.6rem;">
+    <!-- Right-side group: climber chip + admin (desktop only) -->
+    <span class="nav-desktop-right">
       <!-- Climber chip (desktop) -->
       {% if current_climber %}
       <button type="button" class="climber-chip" onclick="openClimberModal()">
@@ -762,11 +789,19 @@ function bulkClear() {
       <a href="/admin/login" class="nav-link" style="font-size:1rem;" title="Admin login">🔒</a>
       {% endif %}
     </span>
-    <!-- Log Climb button (visible on mobile in nav) + hamburger -->
-    <span class="nav-hamburger-group" style="display:none; align-items:center; gap:0.5rem; margin-left:auto;">
-      {% if request.endpoint != 'log_climb' %}
-      <a href="/log" class="btn btn-primary" style="padding:0.45rem 0.9rem; font-size:0.85rem; min-height:unset;">Log Climb</a>
-      {% endif %}
+    <!-- Log Climb (mobile, centered, hidden on home + log pages) -->
+    {% if request.endpoint not in ('index', 'log_climb') %}
+    <a href="/log" class="nav-mobile-log btn btn-primary">Log Climb</a>
+    {% endif %}
+    <!-- Hamburger group: avatar icon + hamburger (mobile only) -->
+    <span class="nav-hamburger-group" style="display:none; align-items:center; gap:0.4rem; margin-left:auto;">
+      <button type="button" class="nav-mobile-avatar" onclick="openClimberModal()" aria-label="Your climber">
+        {% if current_climber %}
+        <span class="climber-chip-avatar">{{ current_climber.name[0].upper() }}</span>
+        {% else %}
+        <span class="climber-chip-avatar" style="background:var(--surf2); border:1.5px dashed var(--border); color:var(--muted);">?</span>
+        {% endif %}
+      </button>
       <button class="nav-hamburger" onclick="openDrawer()" aria-label="Menu">
         <span></span><span></span><span></span>
       </button>
