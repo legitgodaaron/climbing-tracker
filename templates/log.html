@@ -14,6 +14,20 @@
 
   <form method="POST" action="/log">
 
+    <!-- Step 1: Climber (most prominent) -->
+    <div class="form-group climber-step">
+      <label class="field-label" for="sel-user" style="font-size:0.85rem;">Who's logging?</label>
+      <div class="climber-picker" id="climber-picker">
+        {% for u in users %}
+        <label class="climber-opt">
+          <input type="radio" name="user_id" value="{{ u.id }}" required>
+          <span class="climber-avatar">{{ u.name[0].upper() }}</span>
+          <span class="climber-name">{{ u.name }}</span>
+        </label>
+        {% endfor %}
+      </div>
+    </div>
+
     <!-- Session (optional) -->
     {% if active_sessions %}
     <div class="form-group">
@@ -28,17 +42,6 @@
       </select>
     </div>
     {% endif %}
-
-    <!-- Climber -->
-    <div class="form-group">
-      <label class="field-label" for="sel-user">Climber</label>
-      <select name="user_id" id="sel-user" required>
-        <option value="" disabled selected>Select climber…</option>
-        {% for u in users %}
-        <option value="{{ u.id }}">{{ u.name }}</option>
-        {% endfor %}
-      </select>
-    </div>
 
     <!-- Grade -->
     <div class="form-group">
@@ -130,20 +133,20 @@
 </div>
 
 <script>
-  // Remember the last selected climber across visits
-  const sel = document.getElementById('sel-user');
+  // Climber picker: restore last selection from localStorage
   const KEY = 'ct_last_climber';
-
-  // Restore on load
   const saved = localStorage.getItem(KEY);
+  const radios = document.querySelectorAll('.climber-opt input[type="radio"]');
+
   if (saved) {
-    const opt = sel.querySelector('option[value="' + saved + '"]');
-    if (opt) { opt.selected = true; }
+    const match = document.querySelector('.climber-opt input[value="' + saved + '"]');
+    if (match) match.checked = true;
   }
 
   // Save on submit
-  sel.closest('form').addEventListener('submit', function() {
-    if (sel.value) localStorage.setItem(KEY, sel.value);
+  document.querySelector('form').addEventListener('submit', function() {
+    const checked = document.querySelector('.climber-opt input:checked');
+    if (checked) localStorage.setItem(KEY, checked.value);
   });
 
   // Attempts +/- buttons

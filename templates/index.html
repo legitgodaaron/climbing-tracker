@@ -2,15 +2,18 @@
 {% block title %}Home — ClimbTracker{% endblock %}
 {% block content %}
 
-<div class="page-header">
-  <h1>Recent Climbs</h1>
-  <div style="display:flex; gap:.5rem;">
-    <button class="btn btn-secondary" onclick="document.getElementById('modal-user').classList.add('open')">
-      + Climber
-    </button>
-    <a href="/log" class="btn btn-primary">Log Climb</a>
-  </div>
+<!-- Hero / Welcome -->
+<div class="hero-section">
+  <div class="hero-title">🧗 <span class="hi">Climb</span>Tracker</div>
+  <div class="hero-sub">Track your sends. Climb harder.</div>
+  <a href="/log" class="btn btn-primary btn-hero">Log a Climb</a>
+  <button class="hero-add-climber" onclick="document.getElementById('modal-user').classList.add('open')">
+    New here? <strong>Add yourself →</strong>
+  </button>
 </div>
+
+<!-- Recent Activity -->
+<h2 class="section-heading">Recent Activity</h2>
 
 {% if recent %}
 {% if is_admin %}
