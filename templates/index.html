@@ -7,9 +7,11 @@
   <div class="hero-title">🧗 <span class="hi">Climb</span>Tracker</div>
   <div class="hero-sub">Track your sends. Climb harder.</div>
   <a href="/log" class="btn btn-primary btn-hero">Log a Climb</a>
+  {% if not current_climber %}
   <button class="hero-add-climber" onclick="document.getElementById('modal-user').classList.add('open')">
     New here? <strong>Add yourself →</strong>
   </button>
+  {% endif %}
 </div>
 
 <!-- Recent Activity -->

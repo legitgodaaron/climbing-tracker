@@ -737,8 +737,20 @@ function bulkClear() {
     {% if current_climber %}
     <a href="/achievements" class="nav-link {% if request.endpoint == 'achievements' %}active{% endif %}">🏆 Achievements</a>
     {% endif %}
-    <!-- Right-side group: admin -->
+    <!-- Right-side group: climber chip + admin -->
     <span style="margin-left:auto; display:flex; align-items:center; gap:.6rem;">
+      <!-- Climber chip (desktop) -->
+      {% if current_climber %}
+      <button type="button" class="climber-chip" onclick="openClimberModal()">
+        <span class="climber-chip-avatar">{{ current_climber.name[0].upper() }}</span>
+        {{ current_climber.name }}
+      </button>
+      {% else %}
+      <button type="button" class="climber-chip empty" onclick="openClimberModal()">
+        <span class="climber-chip-avatar">?</span>
+        Sign in
+      </button>
+      {% endif %}
       <!-- Admin -->
       {% if is_admin %}
       <span style="color:var(--accent); font-size:.8rem; font-weight:700;">🔑</span>
@@ -824,6 +836,7 @@ function bulkClear() {
     <a href="/records"     class="drawer-link {% if request.endpoint == 'records'     %}active{% endif %}"><span class="dl-icon">🎖️</span> Records</a>
     <a href="/competitions" class="drawer-link {% if request.endpoint in ('competitions','competition_detail','log_comp_send') %}active{% endif %}"><span class="dl-icon">🥇</span> Competitions</a>
     {% if current_climber %}
+    <a href="/climber/{{ current_climber.id }}" class="drawer-link {% if request.endpoint == 'climber_profile' %}active{% endif %}"><span class="dl-icon">👤</span> My Profile</a>
     <a href="/achievements" class="drawer-link {% if request.endpoint == 'achievements' %}active{% endif %}"><span class="dl-icon">🏅</span> My Achievements</a>
     {% endif %}
     <div class="drawer-divider"></div>

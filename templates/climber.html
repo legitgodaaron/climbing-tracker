@@ -61,8 +61,13 @@
     <div class="cp-lbl">Flash Rate</div>
   </div>
   <div class="cp-stat">
-    <div class="cp-val">{{ total_flashes }}</div>
-    <div class="cp-lbl">Flashes</div>
+    {% if comp_results %}
+    {% set best_comp = comp_results | map(attribute='best_problem') | max %}
+    <div class="cp-val" style="color:var(--accent);">#{{ best_comp }}</div>
+    {% else %}
+    <div class="cp-val" style="color:var(--muted);">—</div>
+    {% endif %}
+    <div class="cp-lbl">Best Comp Climb</div>
   </div>
   {% if best_grade %}
   <div class="cp-stat">
@@ -165,6 +170,34 @@
   </div>
 </div>
 
+<!-- ── Session history ────────────────────────────────────── -->
+{% if session_rows %}
+<h2 style="margin:1.75rem 0 .8rem;">Session History</h2>
+<div class="session-list">
+  {% for s in session_rows %}
+  <a href="{{ url_for('session_detail', session_id=s.id) }}" class="session-card">
+    <div>
+      <div class="session-gym">{{ s.gym_name }}</div>
+      <div class="session-meta">
+        {{ s.started_at.strftime('%Y-%m-%d') }}
+        {% if s.ended_at %}&middot; Ended {{ s.ended_at.strftime('%Y-%m-%d') }}{% else %}&middot; <span class="badge-active">In Progress</span>{% endif %}
+      </div>
+    </div>
+    <div class="session-card-stats">
+      <div>
+        <div class="stat-val">{{ s.climb_count }}</div>
+        <div class="stat-lbl">climbs</div>
+      </div>
+      <div>
+        <div class="stat-val" style="color:var(--accent);">{{ s.session_points }}</div>
+        <div class="stat-lbl">pts</div>
+      </div>
+    </div>
+  </a>
+  {% endfor %}
+</div>
+{% endif %}
+
 <!-- ── Recent climbs ──────────────────────────────────────── -->
 <h2 style="margin:1.75rem 0 .8rem;">Recent Activity</h2>
 <div class="card" style="padding:0 1.25rem;">
@@ -207,59 +240,7 @@
   {% endfor %}
 </div>
 
-<!-- ── Session history ────────────────────────────────────── -->
-{% if session_rows %}
-<h2 style="margin:1.75rem 0 .8rem;">Session History</h2>
-<div class="session-list">
-  {% for s in session_rows %}
-  <a href="{{ url_for('session_detail', session_id=s.id) }}" class="session-card">
-    <div>
-      <div class="session-gym">{{ s.gym_name }}</div>
-      <div class="session-meta">
-        {{ s.started_at.strftime('%Y-%m-%d') }}
-        {% if s.ended_at %}&middot; Ended {{ s.ended_at.strftime('%Y-%m-%d') }}{% else %}&middot; <span class="badge-active">In Progress</span>{% endif %}
-      </div>
-    </div>
-    <div class="session-card-stats">
-      <div>
-        <div class="stat-val">{{ s.climb_count }}</div>
-        <div class="stat-lbl">climbs</div>
-      </div>
-      <div>
-        <div class="stat-val" style="color:var(--accent);">{{ s.session_points }}</div>
-        <div class="stat-lbl">pts</div>
-      </div>
-    </div>
-  </a>
-  {% endfor %}
-</div>
-{% endif %}
-
 {% endif %}{# end if total_climbs #}
-
-<!-- ── Competition results ────────────────────────────────── -->
-{% if comp_results %}
-<h2 style="margin:1.75rem 0 .8rem;">Competition Results</h2>
-<div class="session-list">
-  {% for cr in comp_results %}
-  <a href="/competitions/{{ cr.id }}" class="session-card">
-    <div>
-      <div class="session-gym">{{ cr.name }}</div>
-      <div class="session-meta">
-        {{ cr.month.strftime('%B %Y') }}
-        &middot; {{ cr.total_sends }} problem{{ 's' if cr.total_sends != 1 else '' }} logged
-      </div>
-    </div>
-    <div class="session-card-stats">
-      <div>
-        <div class="stat-val" style="color:var(--accent);">#{{ cr.best_problem }}</div>
-        <div class="stat-lbl">best</div>
-      </div>
-    </div>
-  </a>
-  {% endfor %}
-</div>
-{% endif %}
 
 <style>
   /* Summary strip */

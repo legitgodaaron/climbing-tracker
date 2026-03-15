@@ -136,14 +136,13 @@ def init_db():
 
 ACHIEVEMENTS = [
     {'id': 'first_climb',  'name': 'First Step',       'emoji': '🧗', 'desc': 'Log your very first climb'},
-    {'id': 'first_flash',  'name': 'Flash!',            'emoji': '⚡', 'desc': 'Flash a climb on your first attempt'},
+    {'id': 'first_flash',  'name': 'Flash!',            'emoji': '⚡', 'desc': 'Flash a climb'},
     {'id': 'climbs_10',    'name': '10 Sends',          'emoji': '🔟', 'desc': 'Log 10 climbs'},
     {'id': 'climbs_50',    'name': '50 Sends',          'emoji': '🏅', 'desc': 'Log 50 climbs'},
     {'id': 'climbs_100',   'name': 'Century Club',      'emoji': '💯', 'desc': 'Log 100 climbs'},
     {'id': 'pts_100',      'name': 'Point Collector',   'emoji': '⭐', 'desc': 'Earn 100 points total'},
     {'id': 'pts_500',      'name': 'Point Hoarder',     'emoji': '🌟', 'desc': 'Earn 500 points total'},
     {'id': 'pts_1000',     'name': 'Point Legend',      'emoji': '👑', 'desc': 'Earn 1000 points total'},
-    {'id': 'flashes_10',   'name': 'Flash Master',      'emoji': '⚡🔟', 'desc': 'Flash 10 climbs'},
     {'id': 'first_orange', 'name': 'Orange Sent',       'emoji': '🟠', 'desc': 'Send your first orange'},
     {'id': 'first_yellow', 'name': 'Yellow Sent',       'emoji': '🟡', 'desc': 'Send your first yellow'},
     {'id': 'first_green',  'name': 'Going Green',       'emoji': '🟢', 'desc': 'Send your first green'},
@@ -697,7 +696,7 @@ def stats():
     user_stats  = {
         u['id']: {'id': u['id'], 'name': u['name'], 'total_climbs': 0,
                   'total_points': 0, 'best_grade': None,
-                  'flashes': 0}
+                  'flashes': 0, 'grades_sent': set()}
         for u in users
     }
     for c in all_climbs:
@@ -707,14 +706,31 @@ def stats():
         s = user_stats[uid]
         s['total_climbs'] += 1
         s['total_points'] += c['points']
+        s['grades_sent'].add(color)
         if c['flashed']:
             s['flashes'] += 1
         cur = s['best_grade']
         if cur is None or grade_order.index(color) > grade_order.index(cur['key']):
             s['best_grade'] = GRADE_MAP[color]
 
+    def _unlocked(aid, tc, tp, tf, gs):
+        if aid == 'first_climb':  return tc >= 1
+        if aid == 'first_flash':  return tf >= 1
+        if aid == 'climbs_10':    return tc >= 10
+        if aid == 'climbs_50':    return tc >= 50
+        if aid == 'climbs_100':   return tc >= 100
+        if aid == 'pts_100':      return tp >= 100
+        if aid == 'pts_500':      return tp >= 500
+        if aid == 'pts_1000':     return tp >= 1000
+        if aid.startswith('first_'): return aid[len('first_'):] in gs
+        return False
+
     for s in user_stats.values():
         s['flash_pct'] = round(100 * s['flashes'] / s['total_climbs']) if s['total_climbs'] else 0
+        s['achievement_count'] = sum(
+            1 for a in ACHIEVEMENTS
+            if _unlocked(a['id'], s['total_climbs'], s['total_points'], s['flashes'], s['grades_sent'])
+        )
 
     user_rows = sorted(user_stats.values(),
                        key=lambda x: x['total_points'], reverse=True)
@@ -759,7 +775,6 @@ def achievements():
         if aid == 'pts_100':      return total_points  >= 100
         if aid == 'pts_500':      return total_points  >= 500
         if aid == 'pts_1000':     return total_points  >= 1000
-        if aid == 'flashes_10':   return total_flashes >= 10
         if aid.startswith('first_'):
             return aid[len('first_'):] in grades_sent
         return False
