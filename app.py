@@ -1041,25 +1041,71 @@ def achievements():
     total_flashes = sum(1 for c in climbs if c['flashed'])
     grades_sent   = {c['grade_color'] for c in climbs}
 
-    def unlocked(aid):
-        if aid == 'first_climb':  return total_climbs  >= 1
-        if aid == 'first_flash':  return total_flashes >= 1
-        if aid == 'climbs_10':    return total_climbs  >= 10
-        if aid == 'climbs_50':    return total_climbs  >= 50
-        if aid == 'climbs_100':   return total_climbs  >= 100
-        if aid == 'pts_100':      return total_points  >= 100
-        if aid == 'pts_500':      return total_points  >= 500
-        if aid == 'pts_1000':     return total_points  >= 1000
-        if aid.startswith('first_'):
-            return aid[len('first_'):] in grades_sent
-        return False
+    grade_send_ids = {f"first_{g['key']}" for g in GRADE_COLORS}
+    grade_send_order = {f"first_{g['key']}": idx for idx, g in enumerate(GRADE_COLORS)}
 
-    result = [dict(a, unlocked=unlocked(a['id'])) for a in ACHIEVEMENTS]
-    unlocked_count = sum(1 for a in result if a['unlocked'])
+    def progress_for(aid):
+        if aid == 'first_climb':
+            return min(total_climbs, 1), 1
+        if aid == 'first_flash':
+            return min(total_flashes, 1), 1
+        if aid == 'climbs_10':
+            return min(total_climbs, 10), 10
+        if aid == 'climbs_50':
+            return min(total_climbs, 50), 50
+        if aid == 'climbs_100':
+            return min(total_climbs, 100), 100
+        if aid == 'pts_100':
+            return min(total_points, 100), 100
+        if aid == 'pts_500':
+            return min(total_points, 500), 500
+        if aid == 'pts_1000':
+            return min(total_points, 1000), 1000
+        if aid in grade_send_ids:
+            grade_key = aid[len('first_'):]
+            return (1 if grade_key in grades_sent else 0), 1
+        return 0, 1
+
+    result = []
+    for idx, a in enumerate(ACHIEVEMENTS):
+        current, target = progress_for(a['id'])
+        is_grade_send = a['id'] in grade_send_ids
+        unlocked = current >= target
+        progress_pct = int((current / target) * 100) if target else 0
+        result.append(dict(
+            a,
+            unlocked=unlocked,
+            progress_current=current,
+            progress_target=target,
+            progress_pct=progress_pct,
+            is_grade_send=is_grade_send,
+            original_index=idx,
+        ))
+
+    locked_list = [a for a in result if not a['unlocked']]
+    unlocked_list = [a for a in result if a['unlocked']]
+
+    # Locked sorting: closest completion first for non-grade milestones.
+    # Grade-send milestones are excluded from proximity sorting and stay in grade order.
+    locked_non_grade = [a for a in locked_list if not a['is_grade_send']]
+    locked_grade = [a for a in locked_list if a['is_grade_send']]
+
+    locked_non_grade.sort(
+        key=lambda a: (
+            -(a['progress_current'] / a['progress_target']) if a['progress_target'] else 0,
+            a['progress_target'] - a['progress_current'],
+            a['original_index'],
+        )
+    )
+    locked_grade.sort(key=lambda a: grade_send_order.get(a['id'], 999))
+    locked_list = locked_non_grade + locked_grade
+
+    unlocked_count = len(unlocked_list)
 
     return render_template('achievements.html',
                            user=user,
-                           achievements=result,
+                           locked_achievements=locked_list,
+                           unlocked_achievements=unlocked_list,
                            unlocked_count=unlocked_count,
                            total_count=len(ACHIEVEMENTS),
                            total_climbs=total_climbs,

@@ -19,38 +19,42 @@
       {{ total_points }} pts
     </span>
   </div>
-  <div style="background:var(--surf2); border-radius:999px; height:8px; overflow:hidden;">
-    <div style="height:100%; border-radius:999px; background:var(--accent);
-                width:{{ (unlocked_count / total_count * 100)|int }}%;
-                transition:width 0.4s;"></div>
-  </div>
+  <progress class="overall-progress" value="{{ unlocked_count }}" max="{{ total_count }}"></progress>
 </div>
 
-<!-- Unlocked -->
-{% set unlocked_list = achievements | selectattr('unlocked') | list %}
-{% if unlocked_list %}
-<h2 style="margin-bottom:0.8rem;">✅ Unlocked</h2>
+<!-- Locked (shown first) -->
+{% if locked_achievements %}
+<h2 style="margin-bottom:0.8rem;">🔒 Locked</h2>
 <div class="achievement-grid">
-  {% for a in unlocked_list %}
-  <div class="achievement-card unlocked">
-    <div class="ach-emoji">{{ a.emoji }}</div>
-    <div class="ach-name">{{ a.name }}</div>
+  {% for a in locked_achievements %}
+  <div class="achievement-card locked">
+    <div class="ach-emoji" style="filter:grayscale(1); opacity:0.35;">{{ a.emoji }}</div>
+    <div class="ach-name" style="color:var(--muted);">{{ a.name }}</div>
     <div class="ach-desc">{{ a.desc }}</div>
+    <div class="ach-progress-row">
+      <span>{{ a.progress_current }} / {{ a.progress_target }}</span>
+      <span>{{ a.progress_pct }}%</span>
+    </div>
+    <progress class="ach-progress" value="{{ a.progress_current }}" max="{{ a.progress_target }}"></progress>
   </div>
   {% endfor %}
 </div>
 {% endif %}
 
-<!-- Locked -->
-{% set locked_list = achievements | rejectattr('unlocked') | list %}
-{% if locked_list %}
-<h2 style="margin: 1.5rem 0 0.8rem;">🔒 Locked</h2>
+<!-- Unlocked -->
+{% if unlocked_achievements %}
+<h2 style="margin: 1.5rem 0 0.8rem;">✅ Unlocked</h2>
 <div class="achievement-grid">
-  {% for a in locked_list %}
-  <div class="achievement-card locked">
-    <div class="ach-emoji" style="filter:grayscale(1); opacity:0.35;">{{ a.emoji }}</div>
-    <div class="ach-name" style="color:var(--muted);">{{ a.name }}</div>
+  {% for a in unlocked_achievements %}
+  <div class="achievement-card unlocked">
+    <div class="ach-emoji">{{ a.emoji }}</div>
+    <div class="ach-name">{{ a.name }}</div>
     <div class="ach-desc">{{ a.desc }}</div>
+    <div class="ach-progress-row">
+      <span>{{ a.progress_current }} / {{ a.progress_target }}</span>
+      <span>Complete</span>
+    </div>
+    <progress class="ach-progress" value="{{ a.progress_target }}" max="{{ a.progress_target }}"></progress>
   </div>
   {% endfor %}
 </div>
@@ -78,9 +82,58 @@
     border-color: rgba(124,108,255,0.4);
     background: rgba(124,108,255,0.06);
   }
+  .achievement-card.locked {
+    border-color: rgba(181,189,211,0.25);
+  }
+  .overall-progress {
+    width: 100%;
+    height: 8px;
+    border: none;
+    border-radius: 999px;
+    overflow: hidden;
+  }
+  .overall-progress::-webkit-progress-bar {
+    background: var(--surf2);
+    border-radius: 999px;
+  }
+  .overall-progress::-webkit-progress-value {
+    background: var(--accent);
+    border-radius: 999px;
+  }
+  .overall-progress::-moz-progress-bar {
+    background: var(--accent);
+    border-radius: 999px;
+  }
   .ach-emoji { font-size: 2rem; line-height: 1; }
   .ach-name  { font-weight: 700; font-size: 0.88rem; }
   .ach-desc  { color: var(--muted); font-size: 0.75rem; }
+  .ach-progress-row {
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    color: var(--muted);
+    font-size: 0.72rem;
+    margin-top: 0.15rem;
+  }
+  .ach-progress {
+    width: 100%;
+    height: 7px;
+    border: none;
+    border-radius: 999px;
+    overflow: hidden;
+  }
+  .ach-progress::-webkit-progress-bar {
+    background: var(--surf2);
+    border-radius: 999px;
+  }
+  .ach-progress::-webkit-progress-value {
+    background: var(--accent);
+    border-radius: 999px;
+  }
+  .ach-progress::-moz-progress-bar {
+    background: var(--accent);
+    border-radius: 999px;
+  }
 </style>
 
 {% endblock %}
