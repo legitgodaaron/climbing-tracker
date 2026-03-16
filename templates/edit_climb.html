@@ -1,0 +1,164 @@
+{% extends "base.html" %}
+{% block title %}Edit Climb — ClimbTracker{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <div>
+    <h1>Edit Climb</h1>
+    <div style="color:var(--muted); font-size:0.88rem; margin-top:0.25rem;">{{ climber_name }}</div>
+  </div>
+  <a href="{{ url_for('climber_profile', user_id=climb.user_id) }}" class="btn btn-secondary">← Back</a>
+</div>
+
+<div class="card" style="max-width:640px; margin:0 auto;">
+  {% if error %}
+  <div class="alert-error">{{ error }}</div>
+  {% endif %}
+
+  <form method="POST" action="{{ url_for('edit_climb', climb_id=climb.id) }}">
+    <div class="form-group">
+      <label class="field-label">Climber</label>
+      <div style="padding:0.7rem 0.9rem; border:1px solid var(--border); border-radius:8px; background:var(--surf2); font-weight:600;">{{ climber_name }}</div>
+    </div>
+
+    {% if session_options %}
+    <div class="form-group">
+      <label class="field-label" for="sel-session">Session <span class="note">(optional)</span></label>
+      <select name="session_id" id="sel-session" {% if field_errors.session_id %}class="input-error"{% endif %}>
+        <option value="">No session</option>
+        {% for s in session_options %}
+        <option value="{{ s.id }}" {% if form_data.session_id == (s.id|string) %}selected{% endif %}>
+          {{ s.gym_name }} &mdash; {{ s.started_at.strftime('%Y-%m-%d') }}{% if s.ended_at %} (Ended){% endif %}
+        </option>
+        {% endfor %}
+      </select>
+      {% if field_errors.session_id %}<div class="field-error">{{ field_errors.session_id }}</div>{% endif %}
+    </div>
+    {% endif %}
+
+    <div class="form-group">
+      <label class="field-label">Grade <span class="note">(Tag Colour)</span></label>
+      <div class="grade-grid">
+        {% for g in grades %}
+        <label class="grade-card" style="background:{{ g.hex }}18; color:{{ g.text }};">
+          <input type="radio" name="grade_color" value="{{ g.key }}" required {% if form_data.grade_color == g.key %}checked{% endif %}>
+          <div class="grade-dot" style="background:{{ g.hex }};"></div>
+          <span>{{ g.label }}</span>
+          <span style="opacity:.75;">{{ g.grade }}</span>
+          <span style="opacity:.65;">{{ g.points }}&thinsp;pts</span>
+        </label>
+        {% endfor %}
+      </div>
+      {% if field_errors.grade_color %}<div class="field-error">{{ field_errors.grade_color }}</div>{% endif %}
+    </div>
+
+    <div class="two-col">
+      <div class="form-group">
+        <label class="field-label" for="attempts-input">Attempts</label>
+        <div style="display:flex; align-items:center; gap:.6rem;">
+          <button type="button" class="btn btn-secondary" id="btn-minus" style="padding:.4rem .75rem; font-size:1.1rem; line-height:1;">−</button>
+          <input type="number" name="attempts" id="attempts-input"
+                 value="{{ form_data.attempts }}" min="1" max="99" placeholder="N/A"
+                 style="width:4rem; text-align:center; padding:.5rem;" {% if field_errors.attempts %}class="input-error"{% endif %}>
+          <button type="button" class="btn btn-secondary" id="btn-plus" style="padding:.4rem .75rem; font-size:1.1rem; line-height:1;">+</button>
+        </div>
+        {% if field_errors.attempts %}<div class="field-error">{{ field_errors.attempts }}</div>{% endif %}
+      </div>
+
+      <div class="form-group">
+        <label class="field-label">Flash?</label>
+        <label class="opt-card" id="flash-card" style="margin-top:.1rem;">
+          <input type="checkbox" name="flashed" value="1" id="flash-check" {% if form_data.flashed %}checked{% endif %}>
+          ⚡ Sent first try
+        </label>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div class="form-group">
+        <label class="field-label">Type <span class="note">(optional)</span></label>
+        <div class="opt-grid">
+          {% for val, lbl in [('overhang','Overhang'), ('neutral','Neutral'), ('slab','Slab')] %}
+          <label class="opt-card">
+            <input type="radio" name="climb_type" value="{{ val }}" {% if form_data.climb_type == val %}checked{% endif %}>
+            {{ lbl }}
+          </label>
+          {% endfor %}
+        </div>
+        {% if field_errors.climb_type %}<div class="field-error">{{ field_errors.climb_type }}</div>{% endif %}
+      </div>
+
+      <div class="form-group">
+        <label class="field-label">Style <span class="note">(optional)</span></label>
+        <div class="opt-grid">
+          {% for val, lbl in [('dyno','Dyno'), ('static','Static')] %}
+          <label class="opt-card">
+            <input type="radio" name="style" value="{{ val }}" {% if form_data.style == val %}checked{% endif %}>
+            {{ lbl }}
+          </label>
+          {% endfor %}
+        </div>
+        {% if field_errors.style %}<div class="field-error">{{ field_errors.style }}</div>{% endif %}
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="field-label">Hold Types <span class="note">(optional)</span></label>
+      <div class="opt-grid cols-4">
+        {% for val, lbl in [('jugs','Jugs'), ('crimps','Crimps'), ('slopers','Slopers'), ('dual-tex','Dual-Tex')] %}
+        <label class="opt-card">
+          <input type="checkbox" name="holds" value="{{ val }}" {% if val in form_data.holds %}checked{% endif %}>
+          {{ lbl }}
+        </label>
+        {% endfor %}
+      </div>
+      {% if field_errors.holds %}<div class="field-error">{{ field_errors.holds }}</div>{% endif %}
+    </div>
+
+    <div style="display:flex; gap:.5rem; justify-content:flex-end; align-items:center; padding-top:.5rem; flex-wrap:wrap;">
+      <a href="{{ url_for('climber_profile', user_id=climb.user_id) }}" class="btn btn-secondary">Cancel</a>
+      <button type="submit" class="btn btn-primary">Save Changes</button>
+    </div>
+  </form>
+</div>
+
+<script>
+  const attInput = document.getElementById('attempts-input');
+  const flashCheck = document.getElementById('flash-check');
+
+  document.getElementById('btn-minus').addEventListener('click', () => {
+    const current = parseInt(attInput.value, 10);
+    if (Number.isNaN(current) || current <= 1) {
+      attInput.value = '';
+    } else {
+      attInput.value = current - 1;
+    }
+    syncFlash();
+  });
+
+  document.getElementById('btn-plus').addEventListener('click', () => {
+    const current = parseInt(attInput.value, 10);
+    attInput.value = Number.isNaN(current) ? 1 : current + 1;
+    syncFlash();
+  });
+
+  attInput.addEventListener('input', syncFlash);
+  flashCheck.addEventListener('change', syncFlash);
+
+  function syncFlash() {
+    if (flashCheck.checked) {
+      attInput.value = 1;
+      attInput.disabled = true;
+      document.getElementById('btn-minus').disabled = true;
+      document.getElementById('btn-plus').disabled = true;
+    } else {
+      attInput.disabled = false;
+      document.getElementById('btn-minus').disabled = false;
+      document.getElementById('btn-plus').disabled = false;
+    }
+  }
+
+  syncFlash();
+</script>
+
+{% endblock %}

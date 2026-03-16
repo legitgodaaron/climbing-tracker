@@ -234,7 +234,12 @@
         {{ c.date.strftime('%Y-%m-%d') }}{% if c.session_gym %} &middot; {{ c.session_gym }}{% endif %}
       </div>
     </div>
-    <div class="feed-pts">+{{ c.points }}&thinsp;pts</div>
+    <div class="feed-actions">
+      <div class="feed-pts">+{{ c.points }}&thinsp;pts</div>
+      {% if can_edit_climbs %}
+      <a href="{{ url_for('edit_climb', climb_id=c.id) }}" class="feed-action-link">Edit</a>
+      {% endif %}
+    </div>
     {% endif %}
   </div>
   {% endfor %}

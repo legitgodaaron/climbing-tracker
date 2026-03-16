@@ -8,6 +8,18 @@
 </div>
 
 <div class="card" style="max-width:640px; margin:0 auto;">
+  {% if success_state %}
+  <div class="alert-success" style="margin-bottom:1rem;">
+    {{ success_state.message }}
+    <div class="alert-actions">
+      {% if success_state.session_id %}
+      <a href="{{ url_for('session_detail', session_id=success_state.session_id) }}" class="btn btn-secondary">View Session</a>
+      {% endif %}
+      <a href="{{ url_for('climber_profile', user_id=success_state.user_id) }}" class="btn btn-linkish">View Profile</a>
+    </div>
+  </div>
+  {% endif %}
+
   {% if error %}
   <div class="alert-error">{{ error }}</div>
   {% endif %}
@@ -25,14 +37,15 @@
 
       <div id="alt-user-wrap" hidden>
         <label class="field-label" for="alt-user-select" style="margin-top:0.4rem;">Log this climb for</label>
-        <select name="alt_user_id" id="alt-user-select">
+        <select name="alt_user_id" id="alt-user-select" {% if field_errors.alt_user_id %}class="input-error"{% endif %}>
           <option value="">Keep logging as {{ current_climber.name }}</option>
           {% for u in users %}
           {% if u.id != current_climber.id %}
-          <option value="{{ u.id }}">{{ u.name }}</option>
+          <option value="{{ u.id }}" {% if form_data.alt_user_id == (u.id|string) %}selected{% endif %}>{{ u.name }}</option>
           {% endif %}
           {% endfor %}
         </select>
+        {% if field_errors.alt_user_id %}<div class="field-error">{{ field_errors.alt_user_id }}</div>{% endif %}
       </div>
     </div>
     {% else %}
@@ -41,12 +54,13 @@
       <div class="climber-picker" id="climber-picker">
         {% for u in users %}
         <label class="climber-opt">
-          <input type="radio" name="user_id" value="{{ u.id }}" required>
+          <input type="radio" name="user_id" value="{{ u.id }}" required {% if form_data.user_id == (u.id|string) %}checked{% endif %}>
           <span class="climber-avatar">{{ u.name[0].upper() }}</span>
           <span class="climber-name">{{ u.name }}</span>
         </label>
         {% endfor %}
       </div>
+      {% if field_errors.user_id %}<div class="field-error">{{ field_errors.user_id }}</div>{% endif %}
     </div>
     {% endif %}
 
@@ -54,14 +68,15 @@
     {% if active_sessions %}
     <div class="form-group">
       <label class="field-label" for="sel-session">Session <span class="note">(optional)</span></label>
-      <select name="session_id" id="sel-session">
+      <select name="session_id" id="sel-session" {% if field_errors.session_id %}class="input-error"{% endif %}>
         <option value="">No session</option>
         {% for s in active_sessions %}
-        <option value="{{ s.id }}" {% if selected_session_id == s.id %}selected{% endif %}>
-          {{ s.gym_name }} &mdash; {{ s.started_at.strftime('%Y-%m-%d') }}
+        <option value="{{ s.id }}" {% if form_data.session_id == (s.id|string) %}selected{% endif %}>
+          {{ s.gym_name }} &mdash; {{ s.started_at.strftime('%Y-%m-%d') }}{% if s.ended_at %} (Ended){% endif %}
         </option>
         {% endfor %}
       </select>
+      {% if field_errors.session_id %}<div class="field-error">{{ field_errors.session_id }}</div>{% endif %}
     </div>
     {% endif %}
 
@@ -71,7 +86,7 @@
       <div class="grade-grid">
         {% for g in grades %}
         <label class="grade-card" style="background:{{ g.hex }}18; color:{{ g.text }};">
-          <input type="radio" name="grade_color" value="{{ g.key }}" required>
+          <input type="radio" name="grade_color" value="{{ g.key }}" required {% if form_data.grade_color == g.key %}checked{% endif %}>
           <div class="grade-dot" style="background:{{ g.hex }};"></div>
           <span>{{ g.label }}</span>
           <span style="opacity:.75;">{{ g.grade }}</span>
@@ -79,6 +94,7 @@
         </label>
         {% endfor %}
       </div>
+      {% if field_errors.grade_color %}<div class="field-error">{{ field_errors.grade_color }}</div>{% endif %}
     </div>
 
     <!-- Attempts + Flash -->
@@ -89,17 +105,18 @@
           <button type="button" class="btn btn-secondary" id="btn-minus"
                   style="padding:.4rem .75rem; font-size:1.1rem; line-height:1;">−</button>
           <input type="number" name="attempts" id="attempts-input"
-               value="" min="1" max="99" placeholder="N/A"
-                 style="width:4rem; text-align:center; padding:.5rem;">
+               value="{{ form_data.attempts }}" min="1" max="99" placeholder="N/A"
+                 style="width:4rem; text-align:center; padding:.5rem;" {% if field_errors.attempts %}class="input-error"{% endif %}>
           <button type="button" class="btn btn-secondary" id="btn-plus"
                   style="padding:.4rem .75rem; font-size:1.1rem; line-height:1;">+</button>
         </div>
+        {% if field_errors.attempts %}<div class="field-error">{{ field_errors.attempts }}</div>{% endif %}
       </div>
 
       <div class="form-group">
         <label class="field-label">Flash?</label>
         <label class="opt-card" id="flash-card" style="margin-top:.1rem;">
-          <input type="checkbox" name="flashed" value="1" id="flash-check">
+          <input type="checkbox" name="flashed" value="1" id="flash-check" {% if form_data.flashed %}checked{% endif %}>
           ⚡ Sent first try
         </label>
       </div>
@@ -113,11 +130,12 @@
           <div class="opt-grid">
             {% for val, lbl in [('overhang','Overhang'), ('neutral','Neutral'), ('slab','Slab')] %}
             <label class="opt-card">
-              <input type="radio" name="climb_type" value="{{ val }}">
+              <input type="radio" name="climb_type" value="{{ val }}" {% if form_data.climb_type == val %}checked{% endif %}>
               {{ lbl }}
             </label>
             {% endfor %}
           </div>
+          {% if field_errors.climb_type %}<div class="field-error">{{ field_errors.climb_type }}</div>{% endif %}
         </div>
 
         <div class="form-group">
@@ -125,11 +143,12 @@
           <div class="opt-grid">
             {% for val, lbl in [('dyno','Dyno'), ('static','Static')] %}
             <label class="opt-card">
-              <input type="radio" name="style" value="{{ val }}">
+              <input type="radio" name="style" value="{{ val }}" {% if form_data.style == val %}checked{% endif %}>
               {{ lbl }}
             </label>
             {% endfor %}
           </div>
+          {% if field_errors.style %}<div class="field-error">{{ field_errors.style }}</div>{% endif %}
         </div>
       </div>
 
@@ -141,11 +160,12 @@
         <div class="opt-grid cols-4">
           {% for val, lbl in [('jugs','Jugs'), ('crimps','Crimps'), ('slopers','Slopers'), ('dual-tex','Dual-Tex')] %}
           <label class="opt-card">
-            <input type="checkbox" name="holds" value="{{ val }}">
+            <input type="checkbox" name="holds" value="{{ val }}" {% if val in form_data.holds %}checked{% endif %}>
             {{ lbl }}
           </label>
           {% endfor %}
         </div>
+        {% if field_errors.holds %}<div class="field-error">{{ field_errors.holds }}</div>{% endif %}
       </div>
     </div>
 
@@ -167,12 +187,21 @@
   const altUserWrap = document.getElementById('alt-user-wrap');
 
   if (toggleAltUserBtn && altUserWrap) {
+    if ('{{ form_data.alt_user_id }}') {
+      altUserWrap.hidden = false;
+      toggleAltUserBtn.textContent = 'Hide alternate climber';
+    }
     toggleAltUserBtn.addEventListener('click', () => {
       altUserWrap.hidden = !altUserWrap.hidden;
       toggleAltUserBtn.textContent = altUserWrap.hidden
-        ? 'Logging for someone else?'
+        ? 'logging for someone else?'
         : 'Hide alternate climber';
     });
+  }
+
+  if ({{ 'true' if form_data.climb_type or form_data.style or form_data.holds else 'false' }}) {
+    detailsBlock.hidden = false;
+    toggleDetailsBtn.textContent = '− Hide extra details';
   }
 
   if (toggleDetailsBtn && detailsBlock) {
@@ -218,6 +247,8 @@
       document.getElementById('btn-plus').disabled  = false;
     }
   }
+
+  syncFlash();
 
   if (form) {
     form.addEventListener('submit', () => {

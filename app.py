@@ -4,7 +4,7 @@ import psycopg2
 from datetime import datetime
 from psycopg2.extras import RealDictCursor
 from psycopg2 import pool as pg_pool
-from flask import Flask, render_template, request, redirect, url_for, session as flask_session, g
+from flask import Flask, render_template, request, redirect, url_for, session as flask_session, g, flash
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -48,6 +48,84 @@ def get_db():
         g.db_conn = _db_pool.getconn()
         g.db_conn.cursor_factory = RealDictCursor
     return g.db_conn
+
+
+def parse_hold_list(raw_holds):
+    try:
+        values = json.loads(raw_holds) if raw_holds else []
+    except (TypeError, ValueError):
+        return []
+    return [value for value in values if value in VALID_HOLDS]
+
+
+def get_last_session_preferences():
+    prefs = flask_session.get('last_session_by_climber')
+    return prefs if isinstance(prefs, dict) else {}
+
+
+def get_last_session_for_climber(user_id):
+    raw_value = get_last_session_preferences().get(str(user_id))
+    try:
+        return int(raw_value)
+    except (TypeError, ValueError):
+        return None
+
+
+def set_last_session_for_climber(user_id, session_id):
+    prefs = dict(get_last_session_preferences())
+    key = str(user_id)
+    if session_id is None:
+        prefs.pop(key, None)
+    else:
+        prefs[key] = int(session_id)
+    flask_session['last_session_by_climber'] = prefs
+
+
+def get_session_options(include_session_id=None):
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute('SELECT * FROM sessions WHERE ended_at IS NULL ORDER BY started_at DESC')
+    rows = list(cur.fetchall())
+    if include_session_id is not None and not any(row['id'] == include_session_id for row in rows):
+        cur.execute('SELECT * FROM sessions WHERE id = %s', (include_session_id,))
+        extra_row = cur.fetchone()
+        if extra_row is not None:
+            rows.insert(0, extra_row)
+    cur.close()
+    return rows
+
+
+def can_manage_climb(user_id):
+    return is_admin() or flask_session.get('climber_id') == user_id
+
+
+def build_climb_form_data(*, climb=None, user_id=None, selected_session_id=None, alt_user_id=''):
+    if climb is not None:
+        flashed = bool(climb['flashed'])
+        attempts = str(climb['attempts']) if climb['attempts'] else ''
+        return {
+            'user_id': str(user_id if user_id is not None else climb['user_id']),
+            'alt_user_id': alt_user_id,
+            'session_id': '' if climb['session_id'] is None else str(climb['session_id']),
+            'grade_color': climb['grade_color'],
+            'climb_type': climb['climb_type'],
+            'style': climb['style'],
+            'holds': parse_hold_list(climb['holds']),
+            'flashed': flashed,
+            'attempts': attempts,
+        }
+
+    return {
+        'user_id': '' if user_id is None else str(user_id),
+        'alt_user_id': alt_user_id,
+        'session_id': '' if selected_session_id is None else str(selected_session_id),
+        'grade_color': '',
+        'climb_type': '',
+        'style': '',
+        'holds': [],
+        'flashed': False,
+        'attempts': '',
+    }
 
 
 @app.teardown_appcontext
@@ -234,43 +312,69 @@ def add_user():
 
 @app.route('/log', methods=['GET', 'POST'])
 def log_climb():
-    conn  = get_db()
-    cur   = conn.cursor()
+    conn = get_db()
+    cur = conn.cursor()
     cur.execute('SELECT * FROM users ORDER BY name')
     users = cur.fetchall()
-    cur.execute('SELECT * FROM sessions WHERE ended_at IS NULL ORDER BY started_at DESC')
-    active_sessions = cur.fetchall()
     cur.close()
+
+    current_climber_id = flask_session.get('climber_id')
+    selected_session_id = request.args.get('session_id', type=int)
+    if selected_session_id is None and current_climber_id:
+        selected_session_id = get_last_session_for_climber(current_climber_id)
+
+    active_sessions = get_session_options(include_session_id=selected_session_id)
+    valid_session_ids = {row['id'] for row in active_sessions}
+    if selected_session_id not in valid_session_ids:
+        selected_session_id = None
+
+    field_errors = {}
+    form_data = build_climb_form_data(
+        user_id=current_climber_id,
+        selected_session_id=selected_session_id,
+    )
+    success_state = flask_session.pop('log_success', None)
 
     if request.method == 'POST':
         error = None
+        form_data = {
+            'user_id': request.form.get('user_id', '').strip(),
+            'alt_user_id': request.form.get('alt_user_id', '').strip(),
+            'session_id': request.form.get('session_id', '').strip(),
+            'grade_color': request.form.get('grade_color', ''),
+            'climb_type': request.form.get('climb_type', '').strip(),
+            'style': request.form.get('style', '').strip(),
+            'holds': [hold for hold in request.form.getlist('holds') if hold],
+            'flashed': request.form.get('flashed') == '1',
+            'attempts': request.form.get('attempts', '').strip(),
+        }
 
         # Default to the active climber, with an optional override when logging for someone else.
-        user_id = flask_session.get('climber_id')
-        alt_user_raw = request.form.get('alt_user_id', '').strip()
+        user_id = current_climber_id
+        alt_user_raw = form_data['alt_user_id']
         if alt_user_raw:
             try:
                 user_id = int(alt_user_raw)
             except (ValueError, TypeError):
                 user_id = None
-                error = 'Please select a valid climber.'
+                field_errors['alt_user_id'] = 'Please select a valid climber.'
         elif user_id is None:
             try:
-                user_id = int(request.form.get('user_id', ''))
+                user_id = int(form_data['user_id'])
             except (ValueError, TypeError):
                 user_id = None
-                error = 'Please select a climber.'
+                field_errors['user_id'] = 'Please select a climber.'
 
         if user_id is not None and not any(u['id'] == user_id for u in users):
             user_id = None
-            error = 'Please select a valid climber.'
+            field_errors['user_id'] = 'Please select a valid climber.'
 
-        grade = request.form.get('grade_color', '')
-        ctype = request.form.get('climb_type', '').strip()
-        style = request.form.get('style', '').strip()
-        holds = [h for h in request.form.getlist('holds') if h]
-        flashed  = 1 if request.form.get('flashed') == '1' else 0
-        attempts_raw = request.form.get('attempts', '').strip()
+        grade = form_data['grade_color']
+        ctype = form_data['climb_type']
+        style = form_data['style']
+        holds = form_data['holds']
+        flashed = 1 if form_data['flashed'] else 0
+        attempts_raw = form_data['attempts']
         attempts = 0
         if flashed:
             attempts = 1  # a flash is always 1 attempt
@@ -278,44 +382,38 @@ def log_climb():
             try:
                 attempts = max(1, int(attempts_raw))
             except (ValueError, TypeError):
-                error = 'Attempts must be a whole number.'
+                field_errors['attempts'] = 'Attempts must be a whole number.'
 
         # Optional session
-        raw_sid = request.form.get('session_id', '').strip()
+        raw_sid = form_data['session_id']
         try:
             session_id = int(raw_sid) if raw_sid else None
         except ValueError:
             session_id = None
+            field_errors['session_id'] = 'Please choose a valid session.'
 
-        if not error:
-            if grade not in GRADE_MAP:
-                error = 'Please select a grade.'
-            elif ctype and ctype not in VALID_TYPES:
-                error = 'Please select a climb type.'
-            elif style and style not in VALID_STYLES:
-                error = 'Please select a style.'
-            elif not all(h in VALID_HOLDS for h in holds):
-                error = 'Invalid hold type submitted.'
+        if session_id is not None and session_id not in valid_session_ids:
+            field_errors['session_id'] = 'Please choose an active session.'
 
-        if error:
+        if grade not in GRADE_MAP:
+            field_errors['grade_color'] = 'Please select a grade.'
+        elif ctype and ctype not in VALID_TYPES:
+            field_errors['climb_type'] = 'Please select a climb type.'
+        elif style and style not in VALID_STYLES:
+            field_errors['style'] = 'Please select a style.'
+        elif not all(h in VALID_HOLDS for h in holds):
+            field_errors['holds'] = 'Invalid hold type submitted.'
+
+        if field_errors:
+            error = next(iter(field_errors.values()))
             return render_template('log.html', users=users, grades=GRADE_COLORS,
-                                   active_sessions=active_sessions, error=error)
-
-        # Verify session is still open
-        if session_id is not None:
-            conn = get_db()
-            cur  = conn.cursor()
-            cur.execute(
-                'SELECT id FROM sessions WHERE id = %s AND ended_at IS NULL', (session_id,)
-            )
-            valid = cur.fetchone()
-            cur.close()
-            if valid is None:
-                session_id = None
+                                   active_sessions=active_sessions, error=error,
+                                   field_errors=field_errors, form_data=form_data,
+                                   success_state=success_state)
 
         points = GRADE_MAP[grade]['points']
         conn = get_db()
-        cur  = conn.cursor()
+        cur = conn.cursor()
         cur.execute(
             'INSERT INTO climbs (user_id, session_id, grade_color, climb_type, style, holds, points, flashed, attempts) '
             'VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)',
@@ -323,14 +421,148 @@ def log_climb():
         )
         conn.commit()
         cur.close()
-        if session_id:
-            return redirect(url_for('session_detail', session_id=session_id))
-        return redirect(url_for('index'))
+        set_last_session_for_climber(user_id, session_id)
+        flask_session['log_success'] = {
+            'message': 'Climb logged successfully.',
+            'session_id': session_id,
+            'user_id': user_id,
+        }
+        if session_id is not None:
+            return redirect(url_for('log_climb', session_id=session_id))
+        return redirect(url_for('log_climb'))
 
-    selected_session_id = request.args.get('session_id', type=int)
     return render_template('log.html', users=users, grades=GRADE_COLORS,
                            active_sessions=active_sessions,
-                           selected_session_id=selected_session_id)
+                           selected_session_id=selected_session_id,
+                           form_data=form_data,
+                           field_errors=field_errors,
+                           success_state=success_state)
+
+
+@app.route('/climb/<int:climb_id>/edit', methods=['GET', 'POST'])
+def edit_climb(climb_id):
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute('''
+        SELECT c.*, u.name AS climber_name
+        FROM   climbs c
+        JOIN   users  u ON u.id = c.user_id
+        WHERE  c.id = %s
+    ''', (climb_id,))
+    climb = cur.fetchone()
+    cur.close()
+
+    if climb is None:
+        flash('That climb could not be found.', 'error')
+        return redirect(url_for('index'))
+
+    if not can_manage_climb(climb['user_id']):
+        flash('You can only edit your own climbs.', 'error')
+        return redirect(url_for('climber_profile', user_id=climb['user_id']))
+
+    session_options = get_session_options(include_session_id=climb['session_id'])
+    valid_session_ids = {row['id'] for row in session_options}
+    field_errors = {}
+    form_data = build_climb_form_data(climb=climb)
+
+    if request.method == 'POST':
+        form_data = {
+            'user_id': str(climb['user_id']),
+            'alt_user_id': '',
+            'session_id': request.form.get('session_id', '').strip(),
+            'grade_color': request.form.get('grade_color', ''),
+            'climb_type': request.form.get('climb_type', '').strip(),
+            'style': request.form.get('style', '').strip(),
+            'holds': [hold for hold in request.form.getlist('holds') if hold],
+            'flashed': request.form.get('flashed') == '1',
+            'attempts': request.form.get('attempts', '').strip(),
+        }
+
+        grade = form_data['grade_color']
+        ctype = form_data['climb_type']
+        style = form_data['style']
+        holds = form_data['holds']
+        flashed = 1 if form_data['flashed'] else 0
+        attempts_raw = form_data['attempts']
+        attempts = 0
+
+        if flashed:
+            attempts = 1
+        elif attempts_raw:
+            try:
+                attempts = max(1, int(attempts_raw))
+            except (ValueError, TypeError):
+                field_errors['attempts'] = 'Attempts must be a whole number.'
+
+        raw_sid = form_data['session_id']
+        try:
+            session_id = int(raw_sid) if raw_sid else None
+        except ValueError:
+            session_id = None
+            field_errors['session_id'] = 'Please choose a valid session.'
+
+        if session_id is not None and session_id not in valid_session_ids:
+            field_errors['session_id'] = 'Please choose an available session.'
+
+        if grade not in GRADE_MAP:
+            field_errors['grade_color'] = 'Please select a grade.'
+        elif ctype and ctype not in VALID_TYPES:
+            field_errors['climb_type'] = 'Please select a climb type.'
+        elif style and style not in VALID_STYLES:
+            field_errors['style'] = 'Please select a style.'
+        elif not all(h in VALID_HOLDS for h in holds):
+            field_errors['holds'] = 'Invalid hold type submitted.'
+
+        if field_errors:
+            error = next(iter(field_errors.values()))
+            return render_template(
+                'edit_climb.html',
+                climb=climb,
+                climber_name=climb['climber_name'],
+                grades=GRADE_COLORS,
+                session_options=session_options,
+                field_errors=field_errors,
+                error=error,
+                form_data=form_data,
+            )
+
+        points = GRADE_MAP[grade]['points']
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute(
+            '''
+            UPDATE climbs
+            SET    session_id = %s,
+                   grade_color = %s,
+                   climb_type = %s,
+                   style = %s,
+                   holds = %s,
+                   points = %s,
+                   flashed = %s,
+                   attempts = %s
+            WHERE  id = %s
+            ''',
+            (session_id, grade, ctype, style, json.dumps(holds), points, flashed, attempts, climb_id)
+        )
+        conn.commit()
+        cur.close()
+
+        if flask_session.get('climber_id') == climb['user_id']:
+            set_last_session_for_climber(climb['user_id'], session_id)
+
+        flash('Climb updated.', 'success')
+        return redirect(url_for('climber_profile', user_id=climb['user_id']))
+
+    return render_template(
+        'edit_climb.html',
+        climb=climb,
+        climber_name=climb['climber_name'],
+        grades=GRADE_COLORS,
+        session_options=session_options,
+        field_errors=field_errors,
+        error=None,
+        form_data=form_data,
+    )
 
 
 @app.route('/leaderboard')
@@ -954,6 +1186,7 @@ def climber_profile(user_id):
                            recent_climbs=recent_activity,
                            session_rows=session_rows,
                            comp_results=comp_results,
+                           can_edit_climbs=can_manage_climb(user_id),
                            grades=GRADE_COLORS,
                            grade_map=GRADE_MAP)
 
