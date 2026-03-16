@@ -764,7 +764,8 @@ def stats():
                        key=lambda x: x['total_points'], reverse=True)
 
     return render_template('stats.html',
-                           user_rows=user_rows)
+                           user_rows=user_rows,
+                           total_achievements=len(ACHIEVEMENTS))
 
 
 # ── Achievements ─────────────────────────────────────────────────────────────

@@ -18,7 +18,7 @@
         <th>Total Climbs</th>
         <th>Total Points</th>
         <th class="col-grade">Hardest Grade</th>
-        <th>Achievements</th>
+        <th class="col-ach">Achievements</th>
       </tr>
     </thead>
     <tbody>
@@ -40,10 +40,8 @@
           <span style="color:var(--muted);">—</span>
           {% endif %}
         </td>
-        <td>
-          {% if row.achievement_count > 0 %}
-          <span style="font-weight:700;">🏅 {{ row.achievement_count }}</span>
-          {% else %}—{% endif %}
+        <td class="col-ach">
+          <span class="achievement-count">{{ row.achievement_count }}/{{ total_achievements }}</span>
         </td>
       </tr>
       {% endfor %}
@@ -97,11 +95,22 @@
     padding: 0.75rem 1.25rem;
     border-bottom: 1px solid var(--border);
   }
+  .achievement-count { font-weight: 700; white-space: nowrap; }
+  .col-ach { white-space: nowrap; }
   .stats-table tr:last-child td { border-bottom: none; }
   .stats-table tbody tr:hover { background: var(--surf2); }
 
   @media (max-width: 540px) {
     .col-grade { display: none; }
+    .stats-table th,
+    .stats-table td {
+      padding: 0.65rem 0.8rem;
+    }
+    .stats-table th.col-ach,
+    .stats-table td.col-ach {
+      text-align: right;
+      width: 1%;
+    }
   }
 </style>
 
