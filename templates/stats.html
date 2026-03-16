@@ -18,7 +18,10 @@
         <th>Total Climbs</th>
         <th>Total Points</th>
         <th class="col-grade">Hardest Grade</th>
-        <th class="col-ach">Achievements</th>
+        <th class="col-ach">
+          <span class="ach-label-full">Achievements</span>
+          <span class="ach-label-short">Achv.</span>
+        </th>
       </tr>
     </thead>
     <tbody>
@@ -96,7 +99,8 @@
     border-bottom: 1px solid var(--border);
   }
   .achievement-count { font-weight: 700; white-space: nowrap; }
-  .col-ach { white-space: nowrap; }
+  .col-ach { text-align: center; }
+  .ach-label-short { display: none; }
   .stats-table tr:last-child td { border-bottom: none; }
   .stats-table tbody tr:hover { background: var(--surf2); }
 
@@ -106,11 +110,11 @@
     .stats-table td {
       padding: 0.65rem 0.8rem;
     }
+    .stats-table th { letter-spacing: .04em; }
     .stats-table th.col-ach,
-    .stats-table td.col-ach {
-      text-align: right;
-      width: 1%;
-    }
+    .stats-table td.col-ach { text-align: center; min-width: 4.4rem; }
+    .ach-label-full { display: none; }
+    .ach-label-short { display: inline; }
   }
 </style>
 
