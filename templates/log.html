@@ -16,12 +16,11 @@
 
     {% if current_climber %}
     <div class="form-group">
-      <div class="card" style="padding:0.85rem 1rem; display:flex; justify-content:space-between; align-items:center; gap:0.8rem; margin-bottom:0.45rem;">
-        <div>
-          <div class="field-label" style="margin-bottom:0.1rem;">Logging as</div>
-          <div style="font-weight:700;">{{ current_climber.name }}</div>
-        </div>
-        <button type="button" class="btn btn-secondary" id="toggle-alt-user" style="padding:0.45rem 0.75rem;">Logging for someone else?</button>
+      <div style="display:flex; align-items:center; gap:0.45rem; flex-wrap:wrap; margin-bottom:0.35rem;">
+        <span style="font-size:0.92rem; color:var(--muted);">Logging as <strong style="color:var(--text);">{{ current_climber.name }}</strong></span>
+        <button type="button" id="toggle-alt-user" style="background:none; border:none; color:var(--accent); padding:0; font-size:0.84rem; cursor:pointer; text-decoration:underline; text-underline-offset:2px;">
+          logging for someone else?
+        </button>
       </div>
 
       <div id="alt-user-wrap" hidden>
