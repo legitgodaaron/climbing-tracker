@@ -585,6 +585,7 @@ def end_session(session_id):
 def records():
     conn = get_db()
     cur  = conn.cursor()
+    grade_order = [g['key'] for g in GRADE_COLORS]  # ascending difficulty
 
     # Most climbs in a single calendar day
     cur.execute('''
@@ -611,33 +612,60 @@ def records():
     ''')
     best_session_pts = cur.fetchone()
 
-    # Best session by climb count
+    # Highest grade sent ever
     cur.execute('''
-        SELECT u.name, s.gym_name, s.started_at,
-               COUNT(c.id) AS cnt, SUM(c.points) AS pts
-        FROM   climbs   c
-        JOIN   users    u ON c.user_id    = u.id
-        JOIN   sessions s ON c.session_id = s.id
-        WHERE  c.session_id IS NOT NULL
-        GROUP  BY c.user_id, c.session_id, u.name, s.gym_name, s.started_at
-        ORDER  BY cnt DESC
-        LIMIT  1
+        SELECT u.name, c.grade_color, c.flashed, c.date
+        FROM   climbs c
+        JOIN   users  u ON c.user_id = u.id
     ''')
-    best_session_cnt = cur.fetchone()
+    all_sends = cur.fetchall()
 
-    # Most flashes in a single session
-    cur.execute('''
-        SELECT u.name, s.gym_name, s.started_at,
-               SUM(c.flashed) AS flashes
-        FROM   climbs   c
-        JOIN   users    u ON c.user_id    = u.id
-        JOIN   sessions s ON c.session_id = s.id
-        WHERE  c.session_id IS NOT NULL
-        GROUP  BY c.user_id, c.session_id, u.name, s.gym_name, s.started_at
-        ORDER  BY flashes DESC
-        LIMIT  1
-    ''')
-    most_flashes = cur.fetchone()
+    highest_grade_sent = None
+    for row in all_sends:
+        grade_key = row['grade_color']
+        if grade_key not in GRADE_MAP:
+            continue
+        if highest_grade_sent is None:
+            highest_grade_sent = row
+            continue
+        current_rank = grade_order.index(grade_key)
+        best_rank = grade_order.index(highest_grade_sent['grade_color'])
+        if current_rank > best_rank:
+            highest_grade_sent = row
+        elif current_rank == best_rank and row['date'] < highest_grade_sent['date']:
+            highest_grade_sent = row
+
+    if highest_grade_sent:
+        highest_grade_sent = {
+            'name': highest_grade_sent['name'],
+            'grade': GRADE_MAP[highest_grade_sent['grade_color']],
+            'date': highest_grade_sent['date'],
+        }
+
+    # Highest grade flashed
+    highest_grade_flashed = None
+    for row in all_sends:
+        if not row['flashed']:
+            continue
+        grade_key = row['grade_color']
+        if grade_key not in GRADE_MAP:
+            continue
+        if highest_grade_flashed is None:
+            highest_grade_flashed = row
+            continue
+        current_rank = grade_order.index(grade_key)
+        best_rank = grade_order.index(highest_grade_flashed['grade_color'])
+        if current_rank > best_rank:
+            highest_grade_flashed = row
+        elif current_rank == best_rank and row['date'] < highest_grade_flashed['date']:
+            highest_grade_flashed = row
+
+    if highest_grade_flashed:
+        highest_grade_flashed = {
+            'name': highest_grade_flashed['name'],
+            'grade': GRADE_MAP[highest_grade_flashed['grade_color']],
+            'date': highest_grade_flashed['date'],
+        }
 
     # Most sends per grade (for each grade: who has the most sends and how many)
     cur.execute('SELECT * FROM users ORDER BY name')
@@ -676,8 +704,8 @@ def records():
     return render_template('records.html',
                            record_day=record_day,
                            best_session_pts=best_session_pts,
-                           best_session_cnt=best_session_cnt,
-                           most_flashes=most_flashes,
+                           highest_grade_sent=highest_grade_sent,
+                           highest_grade_flashed=highest_grade_flashed,
                            most_sends_per_grade=most_sends_per_grade)
 
 
