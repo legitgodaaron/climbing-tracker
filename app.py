@@ -245,24 +245,40 @@ def log_climb():
     if request.method == 'POST':
         error = None
 
-        # Validate user
-        try:
-            user_id = int(request.form.get('user_id', ''))
-        except (ValueError, TypeError):
+        # Default to the active climber, with an optional override when logging for someone else.
+        user_id = flask_session.get('climber_id')
+        alt_user_raw = request.form.get('alt_user_id', '').strip()
+        if alt_user_raw:
+            try:
+                user_id = int(alt_user_raw)
+            except (ValueError, TypeError):
+                user_id = None
+                error = 'Please select a valid climber.'
+        elif user_id is None:
+            try:
+                user_id = int(request.form.get('user_id', ''))
+            except (ValueError, TypeError):
+                user_id = None
+                error = 'Please select a climber.'
+
+        if user_id is not None and not any(u['id'] == user_id for u in users):
             user_id = None
-            error = 'Please select a climber.'
+            error = 'Please select a valid climber.'
 
         grade = request.form.get('grade_color', '')
-        ctype = request.form.get('climb_type', '')
-        style = request.form.get('style', '')
-        holds = request.form.getlist('holds')
+        ctype = request.form.get('climb_type', '').strip()
+        style = request.form.get('style', '').strip()
+        holds = [h for h in request.form.getlist('holds') if h]
         flashed  = 1 if request.form.get('flashed') == '1' else 0
-        try:
-            attempts = max(1, int(request.form.get('attempts', 1)))
-        except (ValueError, TypeError):
-            attempts = 1
+        attempts_raw = request.form.get('attempts', '').strip()
+        attempts = 0
         if flashed:
             attempts = 1  # a flash is always 1 attempt
+        elif attempts_raw:
+            try:
+                attempts = max(1, int(attempts_raw))
+            except (ValueError, TypeError):
+                error = 'Attempts must be a whole number.'
 
         # Optional session
         raw_sid = request.form.get('session_id', '').strip()
@@ -274,12 +290,10 @@ def log_climb():
         if not error:
             if grade not in GRADE_MAP:
                 error = 'Please select a grade.'
-            elif ctype not in VALID_TYPES:
+            elif ctype and ctype not in VALID_TYPES:
                 error = 'Please select a climb type.'
-            elif style not in VALID_STYLES:
+            elif style and style not in VALID_STYLES:
                 error = 'Please select a style.'
-            elif not holds:
-                error = 'Please select at least one hold type.'
             elif not all(h in VALID_HOLDS for h in holds):
                 error = 'Invalid hold type submitted.'
 
