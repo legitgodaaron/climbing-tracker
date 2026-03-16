@@ -28,7 +28,9 @@
     {% if c.item_type == 'comp' %}
     <div class="feed-dot" style="background:var(--accent);"></div>
     <div class="feed-body">
-      <div class="feed-who">{{ c.climber }}</div>
+      <div class="feed-who">
+        <a href="{{ url_for('climber_profile', user_id=c.user_id) }}" style="color:var(--text); text-decoration:none; border-bottom:1px solid var(--border); transition:color .15s;" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--text)'">{{ c.climber }}</a>
+      </div>
       <div class="feed-meta">
         <span class="gbadge" style="background:rgba(124,108,255,0.15); color:var(--accent); border-color:rgba(124,108,255,0.3);">
           🏆 Problem #{{ c.problem_number }}
@@ -47,7 +49,9 @@
     {% set g = grade_map[c.grade_color] %}
     <div class="feed-dot" style="background:{{ g.hex }};"></div>
     <div class="feed-body">
-      <div class="feed-who">{{ c.climber }}</div>
+      <div class="feed-who">
+        <a href="{{ url_for('climber_profile', user_id=c.user_id) }}" style="color:var(--text); text-decoration:none; border-bottom:1px solid var(--border); transition:color .15s;" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--text)'">{{ c.climber }}</a>
+      </div>
       <div class="feed-meta">
         <span class="gbadge" style="background:{{ g.hex }}22; color:{{ g.hex }}; border-color:{{ g.hex }}44;">
           <span class="gbadge-dot" style="background:{{ g.hex }};"></span>
