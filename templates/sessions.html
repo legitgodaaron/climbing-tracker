@@ -63,9 +63,13 @@
     <h2>Start a Session</h2>
     <form method="POST" action="/start_session">
       <div class="form-group">
-        <label class="field-label" for="gym-name">Gym</label>
-        <input type="text" name="gym_name" id="gym-name"
-               placeholder="e.g. The Wall" maxlength="100" autocomplete="off">
+        <label class="field-label" for="gym-select">Gym</label>
+        <select name="gym_id" id="gym-select" required>
+          <option value="" disabled selected>Select a gym…</option>
+          {% for gym in approved_gyms %}
+          <option value="{{ gym.id }}">{{ gym.name }}</option>
+          {% endfor %}
+        </select>
       </div>
       <div class="form-group">
         <label class="field-label" for="sess-notes">Notes <span class="note">(optional)</span></label>

@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% block title %}Edit Grades — {{ gym.name }} — ClimbTracker{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <div>
+    <h1>Edit Grades</h1>
+    <div style="color:var(--muted); font-size:.88rem; margin-top:.2rem;">{{ gym.name }}</div>
+  </div>
+  <a href="{{ url_for('admin_gyms') }}" class="btn btn-secondary">← Back</a>
+</div>
+
+{% if grades %}
+<div class="card" style="margin-bottom:1.5rem; padding:0 1.25rem;">
+  {% for g in grades %}
+  <div class="feed-item" style="align-items:center;">
+    <div class="feed-dot" style="background:{{ g.hex }};"></div>
+    <div class="feed-body">
+      <form method="POST" action="{{ url_for('edit_gym_grades', gym_id=gym.id) }}" style="display:contents;">
+        <input type="hidden" name="action" value="update">
+        <input type="hidden" name="grade_id" value="{{ g.id }}">
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:.5rem .75rem; align-items:end;">
+          <div>
+            <label class="field-label" style="font-size:.72rem; margin-bottom:.25rem;">Label</label>
+            <input type="text" name="label" value="{{ g.label }}" required maxlength="50"
+                   style="padding:.4rem .6rem; font-size:.88rem;">
+          </div>
+          <div>
+            <label class="field-label" style="font-size:.72rem; margin-bottom:.25rem;">Grade Range</label>
+            <input type="text" name="grade_range" value="{{ g.grade_range }}" maxlength="30"
+                   placeholder="e.g. V2–V4"
+                   style="padding:.4rem .6rem; font-size:.88rem;">
+          </div>
+          <div>
+            <label class="field-label" style="font-size:.72rem; margin-bottom:.25rem;">Points</label>
+            <input type="number" name="points" value="{{ g.points }}" required min="1"
+                   style="padding:.4rem .6rem; font-size:.88rem; width:6rem;">
+          </div>
+          <div>
+            <label class="field-label" style="font-size:.72rem; margin-bottom:.25rem;">Hex Colour</label>
+            <input type="text" name="hex" value="{{ g.hex }}" maxlength="7" placeholder="#888888"
+                   style="padding:.4rem .6rem; font-size:.88rem; width:8rem;">
+          </div>
+          <div>
+            <label class="field-label" style="font-size:.72rem; margin-bottom:.25rem;">Text Colour</label>
+            <input type="text" name="text_color" value="{{ g.text_color }}" maxlength="7" placeholder="#ffffff"
+                   style="padding:.4rem .6rem; font-size:.88rem; width:8rem;">
+          </div>
+          <div style="display:flex; align-items:center; gap:.5rem; padding-top:1.15rem;">
+            <label class="opt-card" style="padding:.35rem .65rem; font-size:.82rem; gap:.35rem;">
+              <input type="checkbox" name="has_subgrades" value="1" {% if g.has_subgrades %}checked{% endif %}>
+              V-subgrades
+            </label>
+          </div>
+        </div>
+        <div style="display:flex; gap:.5rem; margin-top:.75rem; justify-content:flex-end;">
+          <button type="submit" class="btn btn-primary" style="padding:.4rem .85rem; font-size:.82rem;">Save</button>
+        </div>
+      </form>
+    </div>
+    <div style="flex-shrink:0;">
+      <form method="POST" action="{{ url_for('edit_gym_grades', gym_id=gym.id) }}" style="margin:0;"
+            onsubmit="return confirm('Delete this grade?')">
+        <input type="hidden" name="action" value="delete">
+        <input type="hidden" name="grade_id" value="{{ g.id }}">
+        <button type="submit" class="btn btn-secondary"
+                style="color:#ff8b82; border-color:rgba(231,76,60,.35); padding:.4rem .65rem; font-size:.85rem;"
+                title="Delete grade">&times;</button>
+      </form>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="card empty-state" style="margin-bottom:1.5rem;">No grades yet. Add one below.</div>
+{% endif %}
+
+<!-- Add new grade -->
+<div class="card">
+  <h2 style="margin-bottom:1rem;">Add Grade</h2>
+  <form method="POST" action="{{ url_for('edit_gym_grades', gym_id=gym.id) }}">
+    <input type="hidden" name="action" value="add">
+    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:.75rem;">
+      <div class="form-group" style="margin:0;">
+        <label class="field-label">Key <span class="note">(unique, no spaces)</span></label>
+        <input type="text" name="key" required maxlength="30" placeholder="e.g. blue"
+               autocomplete="off">
+      </div>
+      <div class="form-group" style="margin:0;">
+        <label class="field-label">Label</label>
+        <input type="text" name="label" required maxlength="50" placeholder="e.g. Blue"
+               autocomplete="off">
+      </div>
+      <div class="form-group" style="margin:0;">
+        <label class="field-label">Grade Range</label>
+        <input type="text" name="grade_range" maxlength="30" placeholder="e.g. V2–V4"
+               autocomplete="off">
+      </div>
+      <div class="form-group" style="margin:0;">
+        <label class="field-label">Points</label>
+        <input type="number" name="points" required min="1" placeholder="10">
+      </div>
+      <div class="form-group" style="margin:0;">
+        <label class="field-label">Hex Colour</label>
+        <input type="text" name="hex" maxlength="7" placeholder="#2980B9" value="#888888"
+               autocomplete="off">
+      </div>
+      <div class="form-group" style="margin:0;">
+        <label class="field-label">Text Colour</label>
+        <input type="text" name="text_color" maxlength="7" placeholder="#ffffff" value="#ffffff"
+               autocomplete="off">
+      </div>
+    </div>
+    <div style="margin-top:.75rem; margin-bottom:1rem;">
+      <label class="opt-card" style="display:inline-flex; padding:.45rem .8rem; font-size:.88rem;">
+        <input type="checkbox" name="has_subgrades" value="1">
+        This is the top grade — enable V-subgrades picker
+      </label>
+    </div>
+    <div style="display:flex; justify-content:flex-end;">
+      <button type="submit" class="btn btn-primary">Add Grade</button>
+    </div>
+  </form>
+</div>
+
+{% endblock %}

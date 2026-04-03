@@ -26,44 +26,6 @@
 
   <form method="POST" action="/log">
 
-    {% if current_climber %}
-    <div class="form-group">
-      <div style="display:flex; align-items:center; gap:0.45rem; flex-wrap:wrap; margin-bottom:0.35rem;">
-        <span style="font-size:0.92rem; color:var(--muted);">Logging as <strong style="color:var(--text);">{{ current_climber.name }}</strong></span>
-        <button type="button" id="toggle-alt-user" style="background:none; border:none; color:var(--accent); padding:0; font-size:0.84rem; cursor:pointer; text-decoration:underline; text-underline-offset:2px;">
-          logging for someone else?
-        </button>
-      </div>
-
-      <div id="alt-user-wrap" hidden>
-        <label class="field-label" for="alt-user-select" style="margin-top:0.4rem;">Log this climb for</label>
-        <select name="alt_user_id" id="alt-user-select" {% if field_errors.alt_user_id %}class="input-error"{% endif %}>
-          <option value="">Keep logging as {{ current_climber.name }}</option>
-          {% for u in users %}
-          {% if u.id != current_climber.id %}
-          <option value="{{ u.id }}" {% if form_data.alt_user_id == (u.id|string) %}selected{% endif %}>{{ u.name }}</option>
-          {% endif %}
-          {% endfor %}
-        </select>
-        {% if field_errors.alt_user_id %}<div class="field-error">{{ field_errors.alt_user_id }}</div>{% endif %}
-      </div>
-    </div>
-    {% else %}
-    <div class="form-group climber-step">
-      <label class="field-label" for="sel-user" style="font-size:0.85rem;">Who's logging?</label>
-      <div class="climber-picker" id="climber-picker">
-        {% for u in users %}
-        <label class="climber-opt">
-          <input type="radio" name="user_id" value="{{ u.id }}" required {% if form_data.user_id == (u.id|string) %}checked{% endif %}>
-          <span class="climber-avatar">{{ u.name[0].upper() }}</span>
-          <span class="climber-name">{{ u.name }}</span>
-        </label>
-        {% endfor %}
-      </div>
-      {% if field_errors.user_id %}<div class="field-error">{{ field_errors.user_id }}</div>{% endif %}
-    </div>
-    {% endif %}
-
     <!-- Session (optional) -->
     {% if active_sessions %}
     <div class="form-group">
@@ -80,20 +42,39 @@
     </div>
     {% endif %}
 
+    <!-- Gym picker -->
+    <div class="form-group">
+      <label class="field-label" for="sel-gym">Gym</label>
+      <select name="gym_id" id="sel-gym">
+        {% for gym in approved_gyms %}
+        <option value="{{ gym.id }}"
+          {% if form_data.gym_id == (gym.id|string) %}selected
+          {% elif not form_data.gym_id and gym.id == default_gym_id %}selected
+          {% endif %}>{{ gym.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
     <!-- Grade -->
     <div class="form-group">
       <label class="field-label">Grade <span class="note">(Tag Colour)</span></label>
-      <div class="grade-grid">
-        {% for g in grades %}
-        <label class="grade-card" style="background:{{ g.hex }}18; color:{{ g.text }};">
-          <input type="radio" name="grade_color" value="{{ g.key }}" required {% if form_data.grade_color == g.key %}checked{% endif %}>
+      {% for gym in approved_gyms %}
+      <div class="grade-grid gym-grade-set"
+           data-gym-id="{{ gym.id }}"
+           {% set is_default = (form_data.gym_id == (gym.id|string)) or (not form_data.gym_id and gym.id == default_gym_id) %}
+           style="{% if not is_default %}display:none{% endif %}">
+        {% for g in gym_grades_map[gym.id] %}
+        <label class="grade-card" style="background:{{ g.hex }}18; color:{{ g.text_color }};">
+          <input type="radio" name="grade_color" value="{{ g.key }}"
+                 {% if form_data.grade_color == g.key and is_default %}checked{% endif %}>
           <div class="grade-dot" style="background:{{ g.hex }};"></div>
           <span>{{ g.label }}</span>
-          <span style="opacity:.75;">{{ g.grade }}</span>
+          <span style="opacity:.75;">{{ g.grade_range }}</span>
           <span style="opacity:.65;">{{ g.points }}&thinsp;pts</span>
         </label>
         {% endfor %}
       </div>
+      {% endfor %}
       {% if field_errors.grade_color %}<div class="field-error">{{ field_errors.grade_color }}</div>{% endif %}
     </div>
 
@@ -198,21 +179,6 @@
   const form = document.querySelector('form');
   const toggleDetailsBtn = document.getElementById('toggle-details');
   const detailsBlock = document.getElementById('extra-details');
-  const toggleAltUserBtn = document.getElementById('toggle-alt-user');
-  const altUserWrap = document.getElementById('alt-user-wrap');
-
-  if (toggleAltUserBtn && altUserWrap) {
-    if ('{{ form_data.alt_user_id }}') {
-      altUserWrap.hidden = false;
-      toggleAltUserBtn.textContent = 'Hide alternate climber';
-    }
-    toggleAltUserBtn.addEventListener('click', () => {
-      altUserWrap.hidden = !altUserWrap.hidden;
-      toggleAltUserBtn.textContent = altUserWrap.hidden
-        ? 'logging for someone else?'
-        : 'Hide alternate climber';
-    });
-  }
 
   if ({{ 'true' if form_data.climb_type or form_data.style or form_data.holds else 'false' }}) {
     detailsBlock.hidden = false;
@@ -265,12 +231,40 @@
 
   syncFlash();
 
-  // White sub-grade picker visibility
+  // Gym picker — switch grade grid on change
+  const gymSelect = document.getElementById('sel-gym');
+  const gradeSets = document.querySelectorAll('.gym-grade-set');
+  // Map gym_id → key of the grade that has subgrades (or null)
+  const gymSubgradesKey = {
+    {% for gym in approved_gyms %}
+    {{ gym.id }}: {% set sg_grade = gym_grades_map[gym.id] | selectattr('has_subgrades') | list %}{% if sg_grade %}'{{ sg_grade[0].key }}'{% else %}null{% endif %}{% if not loop.last %},{% endif %}
+
+    {% endfor %}
+  };
+
+  function switchGymGrades() {
+    const gid = parseInt(gymSelect.value, 10);
+    gradeSets.forEach(el => {
+      const matches = parseInt(el.dataset.gymId, 10) === gid;
+      el.style.display = matches ? '' : 'none';
+      if (!matches) {
+        // Deselect radio buttons for hidden gyms to avoid stale submissions
+        el.querySelectorAll('input[type="radio"]').forEach(r => r.checked = false);
+      }
+    });
+    updateSubgradeVisibility();
+  }
+
+  gymSelect.addEventListener('change', switchGymGrades);
+
+  // Sub-grade picker visibility — driven by has_subgrades key per gym
   const subgradeWrap = document.getElementById('white-subgrade-wrap');
   const gradeRadios = document.querySelectorAll('input[name="grade_color"]');
   function updateSubgradeVisibility() {
     const sel = document.querySelector('input[name="grade_color"]:checked');
-    subgradeWrap.hidden = !(sel && sel.value === 'white');
+    const gid = parseInt(gymSelect.value, 10);
+    const subKey = gymSubgradesKey[gid];
+    subgradeWrap.hidden = !(sel && subKey && sel.value === subKey);
   }
   gradeRadios.forEach(r => r.addEventListener('change', updateSubgradeVisibility));
   updateSubgradeVisibility();

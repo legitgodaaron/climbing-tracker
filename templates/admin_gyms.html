@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}Manage Gyms — ClimbTracker{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1>🔑 Manage Gyms</h1>
+  <a href="/" class="btn btn-secondary">← Back</a>
+</div>
+
+{% if pending %}
+<h2 style="margin-bottom:.75rem;">Pending Requests</h2>
+<div class="session-list" style="margin-bottom:2rem;">
+  {% for gym in pending %}
+  <div class="session-card" style="cursor:default;">
+    <div style="flex:1;">
+      <div class="session-gym">{{ gym.name }}</div>
+      <div class="session-meta">
+        Requested by <strong>{{ gym.requester_name or 'unknown' }}</strong>
+        &middot; {{ gym.created_at.strftime('%Y-%m-%d') }}
+        {% if gym.notes %}<br>{{ gym.notes }}{% endif %}
+      </div>
+    </div>
+    <div style="display:flex; gap:.5rem; flex-shrink:0;">
+      <form method="POST" action="{{ url_for('approve_gym', gym_id=gym.id) }}" style="margin:0;">
+        <button type="submit" class="btn btn-primary" style="padding:.4rem .85rem;">Approve</button>
+      </form>
+      <form method="POST" action="{{ url_for('reject_gym', gym_id=gym.id) }}" style="margin:0;"
+            onsubmit="return confirm('Reject and delete this request?')">
+        <button type="submit" class="btn btn-secondary"
+                style="color:#ff8b82; border-color:rgba(231,76,60,.35); padding:.4rem .85rem;">Reject</button>
+      </form>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="card empty-state" style="margin-bottom:2rem;">No pending gym requests.</div>
+{% endif %}
+
+<h2 style="margin-bottom:.75rem;">Approved Gyms</h2>
+<div style="display:flex; flex-direction:column; gap:1rem;">
+  {% for gym in approved %}
+  <div class="card">
+    <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:.75rem; margin-bottom:.85rem;">
+      <div>
+        <div style="font-weight:700; font-size:1rem;">{{ gym.name }}</div>
+        {% if gym.notes %}
+        <div style="color:var(--muted); font-size:.82rem; margin-top:.15rem;">{{ gym.notes }}</div>
+        {% endif %}
+      </div>
+      <div style="display:flex; gap:.5rem; flex-shrink:0; align-items:center;">
+        <a href="{{ url_for('edit_gym_grades', gym_id=gym.id) }}" class="btn btn-secondary" style="padding:.4rem .85rem;">Edit Grades</a>
+        <form method="POST" action="{{ url_for('delete_gym', gym_id=gym.id) }}" style="margin:0;"
+              onsubmit="return confirm('Delete {{ gym.name }}? This cannot be undone.')">
+          <button type="submit" class="btn btn-secondary"
+                  style="color:#ff8b82; border-color:rgba(231,76,60,.35); padding:.4rem .65rem;" title="Delete gym">&times; Delete</button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Grade preview chips -->
+    {% set gym_grades = grades_by_gym.get(gym.id, []) %}
+    {% if gym_grades %}
+    <div style="display:flex; flex-wrap:wrap; gap:.35rem;">
+      {% for g in gym_grades %}
+      <span class="gbadge" style="background:{{ g.hex }}22; color:{{ g.hex }}; border-color:{{ g.hex }}44; font-size:.78rem;">
+        <span class="gbadge-dot" style="background:{{ g.hex }};"></span>
+        {{ g.label }} &middot; {{ g.grade_range or '—' }} &middot; {{ g.points }}pts
+        {% if g.has_subgrades %}<span style="opacity:.6;">(sub)</span>{% endif %}
+      </span>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div style="color:var(--muted); font-size:.85rem;">No grades defined yet. <a href="{{ url_for('edit_gym_grades', gym_id=gym.id) }}" style="color:var(--accent);">Add grades →</a></div>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+
+{% endblock %}

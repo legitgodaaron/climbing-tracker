@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}Gyms — ClimbTracker{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1>Gyms</h1>
+  {% if current_climber and not pending_request %}
+  <button class="btn btn-secondary"
+          onclick="document.getElementById('modal-request').classList.add('open')">
+    + Request New Gym
+  </button>
+  {% endif %}
+</div>
+
+{% if approved_gyms %}
+<div class="session-list">
+  {% for gym in approved_gyms %}
+  <div class="session-card" style="cursor:default; pointer-events:none;">
+    <div>
+      <div class="session-gym">{{ gym.name }}</div>
+      {% if gym.notes %}
+      <div class="session-meta">{{ gym.notes[:120] }}{% if gym.notes|length > 120 %}&hellip;{% endif %}</div>
+      {% endif %}
+    </div>
+    <span class="badge-active" style="pointer-events:none;">Approved</span>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="card empty-state">No gyms yet.</div>
+{% endif %}
+
+{% if pending_request %}
+<div class="card" style="margin-top:1.5rem; border-color:rgba(255,215,0,0.25); background:rgba(255,215,0,0.04);">
+  <div style="font-size:.8rem; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; margin-bottom:.5rem;">Your Pending Request</div>
+  <div style="font-weight:700;">{{ pending_request.name }}</div>
+  {% if pending_request.notes %}
+  <div style="color:var(--muted); font-size:.85rem; margin-top:.25rem;">{{ pending_request.notes }}</div>
+  {% endif %}
+  <div style="color:var(--muted); font-size:.78rem; margin-top:.5rem;">Awaiting admin approval.</div>
+</div>
+{% endif %}
+
+{% if current_climber and not pending_request %}
+<!-- Request Gym Modal -->
+<div class="overlay" id="modal-request"
+     onclick="if(event.target===this)this.classList.remove('open')">
+  <div class="modal-box">
+    <h2>Request a New Gym</h2>
+    <form method="POST" action="{{ url_for('request_gym') }}">
+      <div class="form-group">
+        <label class="field-label" for="req-name">Gym Name</label>
+        <input type="text" name="name" id="req-name" required maxlength="100"
+               placeholder="e.g. Boulder World" autocomplete="off">
+      </div>
+      <div class="form-group">
+        <label class="field-label" for="req-notes">Notes for Admin <span class="note">(optional)</span></label>
+        <input type="text" name="notes" id="req-notes" maxlength="1000"
+               placeholder="e.g. Glasgow bouldering gym, colour-coded V-grades" autocomplete="off">
+      </div>
+      <div style="display:flex; gap:.5rem; justify-content:flex-end;">
+        <button type="button" class="btn btn-secondary"
+                onclick="document.getElementById('modal-request').classList.remove('open')">
+          Cancel
+        </button>
+        <button type="submit" class="btn btn-primary">Submit Request</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
+
+{% endblock %}

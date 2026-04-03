@@ -128,6 +128,7 @@ def build_climb_form_data(*, climb=None, user_id=None, selected_session_id=None,
             'user_id': str(user_id if user_id is not None else climb['user_id']),
             'alt_user_id': alt_user_id,
             'session_id': '' if climb['session_id'] is None else str(climb['session_id']),
+            'gym_id': str(climb['gym_id']) if climb.get('gym_id') else '',
             'grade_color': climb['grade_color'],
             'sub_grade': climb.get('sub_grade', '') or '',
             'climb_type': climb['climb_type'],
@@ -141,6 +142,7 @@ def build_climb_form_data(*, climb=None, user_id=None, selected_session_id=None,
         'user_id': '' if user_id is None else str(user_id),
         'alt_user_id': alt_user_id,
         'session_id': '' if selected_session_id is None else str(selected_session_id),
+        'gym_id': '',
         'grade_color': '',
         'sub_grade': '',
         'climb_type': '',
@@ -163,6 +165,8 @@ def close_db(exc):
 def init_db():
     conn = get_db()
     cur  = conn.cursor()
+
+    # ── Core tables ───────────────────────────────────────────────────────────
     cur.execute('''
         CREATE TABLE IF NOT EXISTS users (
             id         SERIAL PRIMARY KEY,
@@ -171,9 +175,34 @@ def init_db():
         )
     ''')
     cur.execute('''
+        CREATE TABLE IF NOT EXISTS gyms (
+            id           SERIAL PRIMARY KEY,
+            name         TEXT    NOT NULL UNIQUE,
+            notes        TEXT    NOT NULL DEFAULT '',
+            is_approved  BOOLEAN NOT NULL DEFAULT FALSE,
+            requested_by INTEGER REFERENCES users(id),
+            created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS gym_grades (
+            id            SERIAL PRIMARY KEY,
+            gym_id        INTEGER NOT NULL REFERENCES gyms(id) ON DELETE CASCADE,
+            key           TEXT    NOT NULL,
+            label         TEXT    NOT NULL,
+            grade_range   TEXT    NOT NULL DEFAULT '',
+            points        INTEGER NOT NULL,
+            hex           TEXT    NOT NULL DEFAULT '#888888',
+            text_color    TEXT    NOT NULL DEFAULT '#fff',
+            sort_order    INTEGER NOT NULL DEFAULT 0,
+            has_subgrades BOOLEAN NOT NULL DEFAULT FALSE,
+            UNIQUE (gym_id, key)
+        )
+    ''')
+    cur.execute('''
         CREATE TABLE IF NOT EXISTS sessions (
             id         SERIAL PRIMARY KEY,
-            gym_name   TEXT   NOT NULL DEFAULT 'The Wall',
+            gym_name   TEXT   NOT NULL DEFAULT 'Unknown Gym',
             notes      TEXT   NOT NULL DEFAULT '',
             started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             ended_at   TIMESTAMP
@@ -196,33 +225,6 @@ def init_db():
             FOREIGN KEY (session_id) REFERENCES sessions(id)
         )
     ''')
-    conn.commit()
-    # Migrate: add columns if absent
-    cur.execute("""
-        SELECT column_name FROM information_schema.columns
-        WHERE table_name = 'climbs'
-    """)
-    cols = [row['column_name'] for row in cur.fetchall()]
-    if 'session_id' not in cols:
-        cur.execute('ALTER TABLE climbs ADD COLUMN session_id INTEGER REFERENCES sessions(id)')
-    if 'flashed' not in cols:
-        cur.execute('ALTER TABLE climbs ADD COLUMN flashed INTEGER NOT NULL DEFAULT 0')
-    if 'attempts' not in cols:
-        cur.execute('ALTER TABLE climbs ADD COLUMN attempts INTEGER NOT NULL DEFAULT 1')
-    if 'sub_grade' not in cols:
-        cur.execute('ALTER TABLE climbs ADD COLUMN sub_grade TEXT')
-    conn.commit()
-
-    # Migrate users: add password_hash if absent
-    cur.execute("""
-        SELECT column_name FROM information_schema.columns
-        WHERE table_name = 'users'
-    """)
-    user_cols = [row['column_name'] for row in cur.fetchall()]
-    if 'password_hash' not in user_cols:
-        cur.execute('ALTER TABLE users ADD COLUMN password_hash TEXT')
-    conn.commit()
-
     cur.execute('''
         CREATE TABLE IF NOT EXISTS competitions (
             id         SERIAL PRIMARY KEY,
@@ -242,7 +244,91 @@ def init_db():
         )
     ''')
     conn.commit()
+
+    # ── Seed Alien Bloc gym ───────────────────────────────────────────────────
+    cur.execute("""
+        INSERT INTO gyms (name, notes, is_approved)
+        VALUES ('Alien Bloc', '', TRUE)
+        ON CONFLICT (name) DO NOTHING
+    """)
+    conn.commit()
+    cur.execute("SELECT id FROM gyms WHERE name = 'Alien Bloc'")
+    alien_bloc_id = cur.fetchone()['id']
+
+    for sort_order, g in enumerate(GRADE_COLORS):
+        cur.execute("""
+            INSERT INTO gym_grades (gym_id, key, label, grade_range, points, hex, text_color, sort_order, has_subgrades)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (gym_id, key) DO NOTHING
+        """, (alien_bloc_id, g['key'], g['label'], g['grade'], g['points'],
+              g['hex'], g['text'], sort_order, g['key'] == 'white'))
+    conn.commit()
+
+    # ── Migrations: climbs ────────────────────────────────────────────────────
+    cur.execute("SELECT column_name FROM information_schema.columns WHERE table_name = 'climbs'")
+    cols = [row['column_name'] for row in cur.fetchall()]
+    if 'session_id' not in cols:
+        cur.execute('ALTER TABLE climbs ADD COLUMN session_id INTEGER REFERENCES sessions(id)')
+    if 'flashed' not in cols:
+        cur.execute('ALTER TABLE climbs ADD COLUMN flashed INTEGER NOT NULL DEFAULT 0')
+    if 'attempts' not in cols:
+        cur.execute('ALTER TABLE climbs ADD COLUMN attempts INTEGER NOT NULL DEFAULT 1')
+    if 'sub_grade' not in cols:
+        cur.execute('ALTER TABLE climbs ADD COLUMN sub_grade TEXT')
+    if 'gym_id' not in cols:
+        cur.execute('ALTER TABLE climbs ADD COLUMN gym_id INTEGER REFERENCES gyms(id)')
+        conn.commit()
+        cur.execute('UPDATE climbs SET gym_id = %s WHERE gym_id IS NULL', (alien_bloc_id,))
+    conn.commit()
+
+    # ── Migrations: users ─────────────────────────────────────────────────────
+    cur.execute("SELECT column_name FROM information_schema.columns WHERE table_name = 'users'")
+    user_cols = [row['column_name'] for row in cur.fetchall()]
+    if 'password_hash' not in user_cols:
+        cur.execute('ALTER TABLE users ADD COLUMN password_hash TEXT')
+    if 'main_gym_id' not in user_cols:
+        cur.execute('ALTER TABLE users ADD COLUMN main_gym_id INTEGER REFERENCES gyms(id)')
+    conn.commit()
+
+    # ── Migrations: sessions ──────────────────────────────────────────────────
+    cur.execute("SELECT column_name FROM information_schema.columns WHERE table_name = 'sessions'")
+    session_cols = [row['column_name'] for row in cur.fetchall()]
+    if 'gym_id' not in session_cols:
+        cur.execute('ALTER TABLE sessions ADD COLUMN gym_id INTEGER REFERENCES gyms(id)')
+        conn.commit()
+        cur.execute('UPDATE sessions SET gym_id = %s WHERE gym_id IS NULL', (alien_bloc_id,))
+        # Keep gym_name in sync with the gym for existing rows
+        cur.execute("UPDATE sessions SET gym_name = 'Alien Bloc' WHERE gym_id = %s", (alien_bloc_id,))
+    conn.commit()
+
     cur.close()
+
+
+def get_approved_gyms():
+    conn = get_db()
+    cur  = conn.cursor()
+    cur.execute('SELECT * FROM gyms WHERE is_approved = TRUE ORDER BY name')
+    result = cur.fetchall()
+    cur.close()
+    return result
+
+
+def get_gym_grades(gym_id):
+    conn = get_db()
+    cur  = conn.cursor()
+    cur.execute('SELECT * FROM gym_grades WHERE gym_id = %s ORDER BY sort_order', (gym_id,))
+    result = cur.fetchall()
+    cur.close()
+    return result
+
+
+def get_alien_bloc_id():
+    conn = get_db()
+    cur  = conn.cursor()
+    cur.execute("SELECT id FROM gyms WHERE name = 'Alien Bloc' LIMIT 1")
+    row = cur.fetchone()
+    cur.close()
+    return row['id'] if row else None
 
 
 # ── Achievements definition ───────────────────────────────────────────────────
@@ -277,16 +363,20 @@ def is_admin():
 def inject_globals():
     climber_id   = flask_session.get('climber_id')
     climber_name = flask_session.get('climber_name')
-    current_climber = {'id': climber_id, 'name': climber_name} if climber_id else None
+    main_gym_id  = flask_session.get('main_gym_id')
+    current_climber = {'id': climber_id, 'name': climber_name, 'main_gym_id': main_gym_id} if climber_id else None
     try:
         conn = get_db()
         cur  = conn.cursor()
         cur.execute('SELECT id, name FROM users ORDER BY name')
         all_users = cur.fetchall()
+        cur.execute('SELECT * FROM gyms WHERE is_approved = TRUE ORDER BY name')
+        approved_gyms = cur.fetchall()
         cur.close()
     except Exception:
         all_users = []
-    return {'is_admin': is_admin(), 'current_climber': current_climber, 'all_users': all_users}
+        approved_gyms = []
+    return {'is_admin': is_admin(), 'current_climber': current_climber, 'all_users': all_users, 'approved_gyms': approved_gyms}
 
 
 # ── Template helpers ──────────────────────────────────────────────────────────
@@ -349,11 +439,19 @@ def add_user():
 
 @app.route('/log', methods=['GET', 'POST'])
 def log_climb():
+    if not flask_session.get('climber_id'):
+        return redirect(url_for('register', next=url_for('log_climb')))
+
     conn = get_db()
     cur = conn.cursor()
     cur.execute('SELECT * FROM users ORDER BY name')
     users = cur.fetchall()
     cur.close()
+
+    # Gym grades for the grade picker (used by both GET and POST error re-render)
+    _all_gyms = get_approved_gyms()
+    gym_grades_map = {gym['id']: get_gym_grades(gym['id']) for gym in _all_gyms}
+    default_gym_id = flask_session.get('main_gym_id') or get_alien_bloc_id()
 
     current_climber_id = flask_session.get('climber_id')
     selected_session_id = request.args.get('session_id', type=int)
@@ -375,9 +473,10 @@ def log_climb():
     if request.method == 'POST':
         error = None
         form_data = {
-            'user_id': request.form.get('user_id', '').strip(),
-            'alt_user_id': request.form.get('alt_user_id', '').strip(),
+            'user_id': '',
+            'alt_user_id': '',
             'session_id': request.form.get('session_id', '').strip(),
+            'gym_id': request.form.get('gym_id', '').strip(),
             'grade_color': request.form.get('grade_color', ''),
             'sub_grade': request.form.get('sub_grade', '').strip(),
             'climb_type': request.form.get('climb_type', '').strip(),
@@ -387,25 +486,8 @@ def log_climb():
             'attempts': request.form.get('attempts', '').strip(),
         }
 
-        # Default to the active climber, with an optional override when logging for someone else.
+        # Always log as the current signed-in climber.
         user_id = current_climber_id
-        alt_user_raw = form_data['alt_user_id']
-        if alt_user_raw:
-            try:
-                user_id = int(alt_user_raw)
-            except (ValueError, TypeError):
-                user_id = None
-                field_errors['alt_user_id'] = 'Please select a valid climber.'
-        elif user_id is None:
-            try:
-                user_id = int(form_data['user_id'])
-            except (ValueError, TypeError):
-                user_id = None
-                field_errors['user_id'] = 'Please select a climber.'
-
-        if user_id is not None and not any(u['id'] == user_id for u in users):
-            user_id = None
-            field_errors['user_id'] = 'Please select a valid climber.'
 
         grade = form_data['grade_color']
         sub_grade = form_data['sub_grade']
@@ -434,10 +516,21 @@ def log_climb():
         if session_id is not None and session_id not in valid_session_ids:
             field_errors['session_id'] = 'Please choose an active session.'
 
-        if grade not in GRADE_MAP:
+        # Load grades for the submitted gym
+        try:
+            gym_id = int(form_data['gym_id']) if form_data['gym_id'] else None
+        except (ValueError, TypeError):
+            gym_id = None
+        db_grades = get_gym_grades(gym_id) if gym_id else []
+        db_grade_map = {g['key']: g for g in db_grades}
+        subgrades_key = next((g['key'] for g in db_grades if g['has_subgrades']), None)
+
+        if not db_grade_map:
+            field_errors['grade_color'] = 'Please select a valid gym.'
+        elif grade not in db_grade_map:
             field_errors['grade_color'] = 'Please select a grade.'
-        elif grade == 'white' and sub_grade not in VALID_WHITE_SUBGRADES:
-            field_errors['sub_grade'] = 'Please select a V-grade for the white tag.'
+        elif grade == subgrades_key and sub_grade not in VALID_WHITE_SUBGRADES:
+            field_errors['sub_grade'] = 'Please select a V-grade for the top grade.'
         elif ctype and ctype not in VALID_TYPES:
             field_errors['climb_type'] = 'Please select a climb type.'
         elif style and style not in VALID_STYLES:
@@ -447,22 +540,24 @@ def log_climb():
 
         if field_errors:
             error = next(iter(field_errors.values()))
-            return render_template('log.html', users=users, grades=GRADE_COLORS,
+            return render_template('log.html', users=users,
                                    white_subgrades=WHITE_SUBGRADES,
+                                   gym_grades_map=gym_grades_map,
+                                   default_gym_id=default_gym_id,
                                    active_sessions=active_sessions, error=error,
                                    field_errors=field_errors, form_data=form_data,
                                    success_state=success_state)
 
-        if grade == 'white' and sub_grade in WHITE_SUBGRADE_MAP:
+        if grade == subgrades_key and sub_grade in WHITE_SUBGRADE_MAP:
             points = WHITE_SUBGRADE_MAP[sub_grade]['points']
         else:
-            points = GRADE_MAP[grade]['points']
+            points = db_grade_map[grade]['points']
         conn = get_db()
         cur = conn.cursor()
         cur.execute(
-            'INSERT INTO climbs (user_id, session_id, grade_color, sub_grade, climb_type, style, holds, points, flashed, attempts) '
-            'VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)',
-            (user_id, session_id, grade, sub_grade or None, ctype, style, json.dumps(holds), points, flashed, attempts)
+            'INSERT INTO climbs (user_id, session_id, gym_id, grade_color, sub_grade, climb_type, style, holds, points, flashed, attempts) '
+            'VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)',
+            (user_id, session_id, gym_id, grade, sub_grade or None, ctype, style, json.dumps(holds), points, flashed, attempts)
         )
         conn.commit()
         cur.close()
@@ -476,8 +571,10 @@ def log_climb():
             return redirect(url_for('log_climb', session_id=session_id))
         return redirect(url_for('log_climb'))
 
-    return render_template('log.html', users=users, grades=GRADE_COLORS,
+    return render_template('log.html', users=users,
                            white_subgrades=WHITE_SUBGRADES,
+                           gym_grades_map=gym_grades_map,
+                           default_gym_id=default_gym_id,
                            active_sessions=active_sessions,
                            selected_session_id=selected_session_id,
                            form_data=form_data,
@@ -683,6 +780,7 @@ def admin_logout():
     flask_session.pop('is_admin', None)
     flask_session.pop('climber_id', None)
     flask_session.pop('climber_name', None)
+    flask_session.pop('main_gym_id', None)
     return redirect(url_for('index'))
 
 
@@ -710,7 +808,7 @@ def login():
             return render_template('login.html', error=error, next=next_url, name_val=name_val)
         conn = get_db()
         cur  = conn.cursor()
-        cur.execute('SELECT id, name, password_hash FROM users WHERE name = %s', (name,))
+        cur.execute('SELECT id, name, password_hash, main_gym_id FROM users WHERE name ILIKE %s', (name,))
         user = cur.fetchone()
         cur.close()
         if user is None or not user['password_hash'] or not check_password_hash(user['password_hash'], password):
@@ -719,6 +817,7 @@ def login():
             flask_session.permanent = True
             flask_session['climber_id']   = user['id']
             flask_session['climber_name'] = user['name']
+            flask_session['main_gym_id']  = user['main_gym_id']
             return redirect(next_url)
     return render_template('login.html', error=error, next=next_url, name_val=name_val)
 
@@ -728,11 +827,13 @@ def register():
     if flask_session.get('climber_id'):
         return redirect(url_for('index'))
     error = None
+    next_url = request.args.get('next', '') or url_for('index')
     form_data = {'name': ''}
     if request.method == 'POST':
         name     = request.form.get('name', '').strip()
         password = request.form.get('password', '')
         confirm  = request.form.get('confirm', '')
+        next_url = request.form.get('next', '') or url_for('index')
         form_data = {'name': name}
         if name.lower() == 'admin':
             error = 'That name is not available.'
@@ -745,7 +846,7 @@ def register():
         else:
             conn = get_db()
             cur  = conn.cursor()
-            cur.execute('SELECT id, password_hash FROM users WHERE name = %s', (name,))
+            cur.execute('SELECT id, password_hash FROM users WHERE name ILIKE %s', (name,))
             existing = cur.fetchone()
             if existing and existing['password_hash']:
                 error = 'That name is already taken.'
@@ -759,7 +860,8 @@ def register():
                 flask_session.permanent = True
                 flask_session['climber_id']   = existing['id']
                 flask_session['climber_name'] = name
-                return redirect(url_for('index'))
+                flask_session['main_gym_id']  = existing.get('main_gym_id')
+                return redirect(next_url)
             else:
                 try:
                     cur.execute(
@@ -772,18 +874,20 @@ def register():
                     flask_session.permanent = True
                     flask_session['climber_id']   = new_id
                     flask_session['climber_name'] = name
-                    return redirect(url_for('index'))
+                    flask_session['main_gym_id']  = None
+                    return redirect(next_url)
                 except psycopg2.IntegrityError:
                     conn.rollback()
                     cur.close()
                     error = 'That name is already taken.'
-    return render_template('register.html', error=error, form_data=form_data)
+    return render_template('register.html', error=error, form_data=form_data, next=next_url)
 
 
 @app.route('/logout', methods=['POST'])
 def logout():
     flask_session.pop('climber_id',   None)
     flask_session.pop('climber_name', None)
+    flask_session.pop('main_gym_id',  None)
     flask_session.pop('is_admin',     None)
     next_url = request.form.get('next', '') or url_for('index')
     return redirect(next_url)
@@ -895,17 +999,33 @@ def sessions():
     ''')
     rows = cur.fetchall()
     cur.close()
-    return render_template('sessions.html', sessions=rows)
+    return render_template('sessions.html', sessions=rows, approved_gyms=get_approved_gyms())
 
 
 @app.route('/start_session', methods=['POST'])
 def start_session():
-    gym   = request.form.get('gym_name', '').strip()[:100] or 'The Wall'
-    notes = request.form.get('notes', '').strip()[:500]
-    conn  = get_db()
-    cur   = conn.cursor()
-    cur.execute('INSERT INTO sessions (gym_name, notes) VALUES (%s, %s) RETURNING id', (gym, notes))
-    sid   = cur.fetchone()['id']
+    gym_id_raw = request.form.get('gym_id', '').strip()
+    notes      = request.form.get('notes', '').strip()[:500]
+    conn = get_db()
+    cur  = conn.cursor()
+    try:
+        gym_id = int(gym_id_raw)
+    except (ValueError, TypeError):
+        gym_id = None
+    gym_name = 'Unknown Gym'
+    if gym_id:
+        cur.execute('SELECT name FROM gyms WHERE id = %s AND is_approved = TRUE', (gym_id,))
+        gym_row = cur.fetchone()
+        if gym_row:
+            gym_name = gym_row['name']
+        else:
+            gym_id   = None
+            gym_name = 'Unknown Gym'
+    cur.execute(
+        'INSERT INTO sessions (gym_id, gym_name, notes) VALUES (%s, %s, %s) RETURNING id',
+        (gym_id, gym_name, notes)
+    )
+    sid = cur.fetchone()['id']
     conn.commit()
     cur.close()
     return redirect(url_for('session_detail', session_id=sid))
@@ -1520,6 +1640,256 @@ def delete_comp_send(send_id):
     if row:
         return redirect(url_for('competition_detail', comp_id=row['competition_id']))
     return redirect(url_for('competitions'))
+
+
+# ── Gym routes ────────────────────────────────────────────────────────────────
+
+@app.route('/gyms')
+def gyms():
+    conn = get_db()
+    cur  = conn.cursor()
+    cur.execute('SELECT * FROM gyms WHERE is_approved = TRUE ORDER BY name')
+    approved = cur.fetchall()
+    pending_request = None
+    climber_id = flask_session.get('climber_id')
+    if climber_id:
+        cur.execute(
+            'SELECT * FROM gyms WHERE is_approved = FALSE AND requested_by = %s LIMIT 1',
+            (climber_id,)
+        )
+        pending_request = cur.fetchone()
+    cur.close()
+    return render_template('gyms.html', approved_gyms=approved, pending_request=pending_request)
+
+
+@app.route('/gym/request', methods=['POST'])
+def request_gym():
+    climber_id = flask_session.get('climber_id')
+    if not climber_id:
+        return redirect(url_for('login', next=url_for('gyms')))
+    name  = request.form.get('name', '').strip()[:100]
+    notes = request.form.get('notes', '').strip()[:1000]
+    if not name:
+        flash('Please provide a gym name.', 'error')
+        return redirect(url_for('gyms'))
+    conn = get_db()
+    cur  = conn.cursor()
+    try:
+        cur.execute(
+            'INSERT INTO gyms (name, notes, is_approved, requested_by) VALUES (%s, %s, FALSE, %s)',
+            (name, notes, climber_id)
+        )
+        conn.commit()
+        flash(f'"{name}" has been submitted for admin approval.', 'success')
+    except psycopg2.IntegrityError:
+        conn.rollback()
+        flash('A gym with that name already exists.', 'error')
+    cur.close()
+    return redirect(url_for('gyms'))
+
+
+@app.route('/admin/gyms')
+def admin_gyms():
+    if not is_admin():
+        return redirect(url_for('login'))
+    conn = get_db()
+    cur  = conn.cursor()
+    cur.execute('''
+        SELECT g.*, u.name AS requester_name
+        FROM   gyms  g
+        LEFT   JOIN users u ON u.id = g.requested_by
+        WHERE  g.is_approved = FALSE
+        ORDER  BY g.created_at ASC
+    ''')
+    pending = cur.fetchall()
+    cur.execute('''
+        SELECT g.*, u.name AS requester_name
+        FROM   gyms  g
+        LEFT   JOIN users u ON u.id = g.requested_by
+        WHERE  g.is_approved = TRUE
+        ORDER  BY g.name ASC
+    ''')
+    approved = cur.fetchall()
+    # Load grades for each approved gym
+    cur.execute('SELECT * FROM gym_grades ORDER BY gym_id, sort_order')
+    all_grades = cur.fetchall()
+    cur.close()
+    grades_by_gym = {}
+    for gr in all_grades:
+        grades_by_gym.setdefault(gr['gym_id'], []).append(gr)
+    return render_template('admin_gyms.html',
+                           pending=pending,
+                           approved=approved,
+                           grades_by_gym=grades_by_gym)
+
+
+@app.route('/admin/gym/<int:gym_id>/approve', methods=['POST'])
+def approve_gym(gym_id):
+    if not is_admin():
+        return redirect(url_for('login'))
+    conn = get_db()
+    cur  = conn.cursor()
+    cur.execute('UPDATE gyms SET is_approved = TRUE WHERE id = %s', (gym_id,))
+    conn.commit()
+    # Seed default V-scale grades if none exist yet
+    cur.execute('SELECT COUNT(*) AS cnt FROM gym_grades WHERE gym_id = %s', (gym_id,))
+    if cur.fetchone()['cnt'] == 0:
+        default_grades = [
+            ('vb',  'Orange', 'VB',    1,   '#FF7700', '#fff', 0, False),
+            ('v0',  'Yellow', 'V0',    2,   '#FFD700', '#fff', 1, False),
+            ('v1',  'Green',  'V1',    3,   '#27AE60', '#fff', 2, False),
+            ('v2',  'Blue',   'V2',    6,   '#2980B9', '#fff', 3, False),
+            ('v3',  'Purple', 'V3',   10,   '#8E44AD', '#fff', 4, False),
+            ('v4',  'Red',    'V4',   15,   '#E74C3C', '#fff', 5, False),
+            ('v5',  'Black',  'V5',   21,   '#909090', '#fff', 6, False),
+            ('v6',  'Pink',   'V6',   30,   '#E91E9E', '#fff', 7, False),
+            ('v7p', 'White',  'V7+',  50,   '#E8E8E8', '#fff', 8, True),
+        ]
+        for key, label, grade_range, points, hex_c, text_c, sort_order, has_sub in default_grades:
+            cur.execute('''
+                INSERT INTO gym_grades (gym_id, key, label, grade_range, points, hex, text_color, sort_order, has_subgrades)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                ON CONFLICT (gym_id, key) DO NOTHING
+            ''', (gym_id, key, label, grade_range, points, hex_c, text_c, sort_order, has_sub))
+        conn.commit()
+    cur.close()
+    flash('Gym approved.', 'success')
+    return redirect(url_for('admin_gyms'))
+
+
+@app.route('/admin/gym/<int:gym_id>/reject', methods=['POST'])
+def reject_gym(gym_id):
+    if not is_admin():
+        return redirect(url_for('login'))
+    conn = get_db()
+    cur  = conn.cursor()
+    cur.execute('DELETE FROM gyms WHERE id = %s AND is_approved = FALSE', (gym_id,))
+    conn.commit()
+    cur.close()
+    flash('Gym request rejected.', 'success')
+    return redirect(url_for('admin_gyms'))
+
+
+@app.route('/admin/gym/<int:gym_id>/delete', methods=['POST'])
+def delete_gym(gym_id):
+    if not is_admin():
+        return redirect(url_for('login'))
+    conn = get_db()
+    cur  = conn.cursor()
+    # Null out FK references before deleting so existing climbs/sessions are preserved
+    cur.execute('UPDATE climbs   SET gym_id = NULL WHERE gym_id = %s', (gym_id,))
+    cur.execute('UPDATE sessions SET gym_id = NULL WHERE gym_id = %s', (gym_id,))
+    cur.execute('UPDATE users    SET main_gym_id = NULL WHERE main_gym_id = %s', (gym_id,))
+    cur.execute('DELETE FROM gyms WHERE id = %s', (gym_id,))
+    conn.commit()
+    cur.close()
+    flash('Gym deleted.', 'success')
+    return redirect(url_for('admin_gyms'))
+
+
+@app.route('/admin/gym/<int:gym_id>/grades', methods=['GET', 'POST'])
+def edit_gym_grades(gym_id):
+    if not is_admin():
+        return redirect(url_for('login'))
+    conn = get_db()
+    cur  = conn.cursor()
+    cur.execute('SELECT * FROM gyms WHERE id = %s', (gym_id,))
+    gym = cur.fetchone()
+    if gym is None:
+        cur.close()
+        return redirect(url_for('admin_gyms'))
+
+    if request.method == 'POST':
+        action = request.form.get('action', '')
+
+        if action == 'add':
+            key         = request.form.get('key', '').strip().lower().replace(' ', '_')[:30]
+            label       = request.form.get('label', '').strip()[:50]
+            grade_range = request.form.get('grade_range', '').strip()[:30]
+            hex_c       = request.form.get('hex', '#888888').strip()[:7]
+            text_c      = request.form.get('text_color', '#ffffff').strip()[:7]
+            has_sub     = request.form.get('has_subgrades') == '1'
+            try:
+                points = int(request.form.get('points', 0))
+                points = max(1, points)
+            except (ValueError, TypeError):
+                points = 1
+            if key and label:
+                cur.execute('SELECT COALESCE(MAX(sort_order),0)+1 AS next FROM gym_grades WHERE gym_id=%s', (gym_id,))
+                sort_order = cur.fetchone()['next']
+                try:
+                    cur.execute('''
+                        INSERT INTO gym_grades (gym_id, key, label, grade_range, points, hex, text_color, sort_order, has_subgrades)
+                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                    ''', (gym_id, key, label, grade_range, points, hex_c, text_c, sort_order, has_sub))
+                    conn.commit()
+                    flash('Grade added.', 'success')
+                except psycopg2.IntegrityError:
+                    conn.rollback()
+                    flash(f'A grade with key "{key}" already exists for this gym.', 'error')
+
+        elif action == 'update':
+            grade_id    = request.form.get('grade_id', type=int)
+            label       = request.form.get('label', '').strip()[:50]
+            grade_range = request.form.get('grade_range', '').strip()[:30]
+            hex_c       = request.form.get('hex', '#888888').strip()[:7]
+            text_c      = request.form.get('text_color', '#ffffff').strip()[:7]
+            has_sub     = request.form.get('has_subgrades') == '1'
+            try:
+                points = int(request.form.get('points', 0))
+                points = max(1, points)
+            except (ValueError, TypeError):
+                points = 1
+            if grade_id and label:
+                cur.execute('''
+                    UPDATE gym_grades
+                    SET label=%s, grade_range=%s, points=%s, hex=%s, text_color=%s, has_subgrades=%s
+                    WHERE id=%s AND gym_id=%s
+                ''', (label, grade_range, points, hex_c, text_c, has_sub, grade_id, gym_id))
+                conn.commit()
+                flash('Grade updated.', 'success')
+
+        elif action == 'delete':
+            grade_id = request.form.get('grade_id', type=int)
+            if grade_id:
+                cur.execute('DELETE FROM gym_grades WHERE id=%s AND gym_id=%s', (grade_id, gym_id))
+                conn.commit()
+                flash('Grade deleted.', 'success')
+
+        cur.close()
+        return redirect(url_for('edit_gym_grades', gym_id=gym_id))
+
+    cur.execute('SELECT * FROM gym_grades WHERE gym_id=%s ORDER BY sort_order', (gym_id,))
+    grades = cur.fetchall()
+    cur.close()
+    return render_template('edit_gym_grades.html', gym=gym, grades=grades)
+
+
+# ── Account settings ──────────────────────────────────────────────────────────
+
+@app.route('/account/main-gym', methods=['POST'])
+def set_main_gym():
+    if not flask_session.get('climber_id'):
+        return redirect(url_for('login'))
+    raw = request.form.get('main_gym_id', '').strip()
+    gym_id = int(raw) if raw.isdigit() else None
+    if gym_id is not None:
+        conn = get_db()
+        cur  = conn.cursor()
+        cur.execute('SELECT id FROM gyms WHERE id = %s AND is_approved = TRUE', (gym_id,))
+        if not cur.fetchone():
+            gym_id = None
+        cur.close()
+    conn = get_db()
+    cur  = conn.cursor()
+    cur.execute('UPDATE users SET main_gym_id = %s WHERE id = %s',
+                (gym_id, flask_session['climber_id']))
+    conn.commit()
+    cur.close()
+    flask_session['main_gym_id'] = gym_id
+    flash('Main gym updated.', 'success')
+    next_url = request.form.get('next', '') or url_for('index')
+    return redirect(next_url)
 
 
 # ── Startup ───────────────────────────────────────────────────────────────────
