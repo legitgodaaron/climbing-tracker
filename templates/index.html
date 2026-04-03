@@ -8,9 +8,9 @@
   <div class="hero-sub">Track your sends. Climb harder.</div>
   <a href="/log" class="btn btn-primary btn-hero">Log a Climb</a>
   {% if not current_climber %}
-  <button class="hero-add-climber" onclick="document.getElementById('modal-user').classList.add('open')">
-    New here? <strong>Add yourself →</strong>
-  </button>
+  <a href="{{ url_for('register') }}" class="hero-add-climber" style="text-decoration:none;">
+    New here? <strong>Register →</strong>
+  </a>
   {% endif %}
 </div>
 
@@ -55,7 +55,7 @@
       <div class="feed-meta">
         <span class="gbadge" style="background:{{ g.hex }}22; color:{{ g.hex }}; border-color:{{ g.hex }}44;">
           <span class="gbadge-dot" style="background:{{ g.hex }};"></span>
-          {{ g.label }} &middot; {{ g.grade }}
+          {{ g.label }} &middot; {% if c.grade_color == 'white' and c.sub_grade %}{{ c.sub_grade | upper }}{% else %}{{ g.grade }}{% endif %}
         </span>
         &ensp;{{ c.climb_type | capitalize }}
         &middot; {{ c.style | capitalize }}
@@ -88,27 +88,5 @@
   No climbs logged yet. <a href="/log">Log the first one!</a>
 </div>
 {% endif %}
-
-<!-- Add Climber Modal -->
-<div class="overlay" id="modal-user" onclick="if(event.target===this)this.classList.remove('open')">
-  <div class="modal-box">
-    <h2>Add Climber</h2>
-    <form method="POST" action="/add_user">
-      <div class="form-group">
-        <label class="field-label" for="uname">Name</label>
-        <input type="text" name="name" id="uname"
-               placeholder="e.g. Alex Honnold"
-               required autocomplete="off" maxlength="50">
-      </div>
-      <div style="display:flex; gap:.5rem; justify-content:flex-end;">
-        <button type="button" class="btn btn-secondary"
-                onclick="document.getElementById('modal-user').classList.remove('open')">
-          Cancel
-        </button>
-        <button type="submit" class="btn btn-primary">Add</button>
-      </div>
-    </form>
-  </div>
-</div>
 
 {% endblock %}

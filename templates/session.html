@@ -74,7 +74,7 @@
         <span class="gbadge"
               style="background:{{ g.hex }}22; color:{{ g.hex }}; border-color:{{ g.hex }}44;">
           <span class="gbadge-dot" style="background:{{ g.hex }};"></span>
-          {{ g.label }} &middot; {{ g.grade }}
+          {{ g.label }} &middot; {% if c.grade_color == 'white' and c.sub_grade %}{{ c.sub_grade | upper }}{% else %}{{ g.grade }}{% endif %}
         </span>
         &ensp;{{ c.climb_type | capitalize }}
         &middot; {{ c.style | capitalize }}

@@ -15,7 +15,7 @@
       <button type="submit" class="btn btn-secondary" style="color:#ff8b82; border-color:rgba(231,76,60,.35);">Delete</button>
     </form>
     {% endif %}
-    <a href="{{ url_for('stats') }}" class="btn btn-secondary">&larr; Stats</a>
+    <a href="{{ url_for('climber_achievements', user_id=user.id) }}" class="btn btn-secondary">🏅 Achievements</a>
   </div>
 </div>
 
@@ -222,7 +222,7 @@
       <div class="feed-meta" style="margin-top:0;">
         <span class="gbadge" style="background:{{ g.hex }}22; color:{{ g.hex }}; border-color:{{ g.hex }}44;">
           <span class="gbadge-dot" style="background:{{ g.hex }};"></span>
-          {{ g.label }} &middot; {{ g.grade }}
+          {{ g.label }} &middot; {% if c.grade_color == 'white' and c.sub_grade %}{{ c.sub_grade | upper }}{% else %}{{ g.grade }}{% endif %}
         </span>
         &ensp;{{ c.climb_type | capitalize }}
         &middot; {{ c.style | capitalize }}
@@ -238,6 +238,12 @@
       <div class="feed-pts">+{{ c.points }}&thinsp;pts</div>
       {% if can_edit_climbs %}
       <a href="{{ url_for('edit_climb', climb_id=c.id) }}" class="feed-action-link">Edit</a>
+      <form method="POST" action="{{ url_for('delete_climb', climb_id=c.id) }}" style="margin:0;"
+            onsubmit="return confirm('Delete this climb? This cannot be undone.')">
+        <input type="hidden" name="next" value="{{ url_for('climber_profile', user_id=user.id) }}">
+        <button type="submit" class="feed-action-link"
+                style="background:none; border:none; cursor:pointer; color:var(--danger); border-color:rgba(231,76,60,.25);">Delete</button>
+      </form>
       {% endif %}
     </div>
     {% endif %}

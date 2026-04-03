@@ -879,34 +879,31 @@ function bulkClear() {
     <a href="/log"         class="nav-link {% if request.endpoint == 'log_climb'  %}active{% endif %}">Log Climb</a>
     <a href="/leaderboard" class="nav-link {% if request.endpoint == 'leaderboard'%}active{% endif %}">Leaderboard</a>
     <a href="/sessions"    class="nav-link {% if request.endpoint in ('sessions','session_detail') %}active{% endif %}">Sessions</a>
-    <a href="/stats"       class="nav-link {% if request.endpoint == 'stats' %}active{% endif %}">Stats</a>
     <a href="/competitions" class="nav-link {% if request.endpoint in ('competitions','competition_detail','log_comp_send') %}active{% endif %}">Comps</a>
     {% if current_climber %}
-    <a href="/achievements" class="nav-link {% if request.endpoint == 'achievements' %}active{% endif %}">🏆 Achievements</a>
+    <a href="{{ url_for('climber_achievements', user_id=current_climber.id) }}" class="nav-link {% if request.endpoint == 'climber_achievements' %}active{% endif %}">🏆 Achievements</a>
     {% endif %}
     <!-- Right-side group: climber chip + admin (desktop only) -->
     <span class="nav-desktop-right">
       <!-- Climber chip (desktop) -->
       {% if current_climber %}
-      <button type="button" class="climber-chip" onclick="openClimberModal()">
+      <button type="button" class="climber-chip" onclick="openAccountModal()">
         <span class="climber-chip-avatar">{{ current_climber.name[0].upper() }}</span>
         {{ current_climber.name }}
       </button>
       {% else %}
-      <button type="button" class="climber-chip empty" onclick="openClimberModal()">
+      <a href="{{ url_for('login') }}" class="climber-chip empty" style="text-decoration:none;">
         <span class="climber-chip-avatar">?</span>
         Sign in
-      </button>
+      </a>
       {% endif %}
-      <!-- Admin -->
+      <!-- Admin (only shown when logged in as admin) -->
       {% if is_admin %}
       <span style="color:var(--accent); font-size:.8rem; font-weight:700;">🔑</span>
-      <form method="POST" action="/admin/logout" style="margin:0;">
+      <form method="POST" action="/logout" style="margin:0;">
         <button type="submit" class="btn btn-secondary"
                 style="padding:.25rem .7rem; font-size:.78rem;">Logout</button>
       </form>
-      {% else %}
-      <a href="/admin/login" class="nav-link" style="font-size:1rem;" title="Admin login">🔒</a>
       {% endif %}
     </span>
     <!-- Log Climb (mobile, centered, hidden on home + log pages) -->
@@ -915,52 +912,43 @@ function bulkClear() {
     {% endif %}
     <!-- Hamburger group: avatar icon + hamburger (mobile only) -->
     <span class="nav-hamburger-group" style="display:none; align-items:center; gap:0.4rem; margin-left:auto;">
-      <button type="button" class="nav-mobile-avatar" onclick="openClimberModal()" aria-label="Your climber">
-        {% if current_climber %}
+      {% if current_climber %}
+      <button type="button" class="nav-mobile-avatar" onclick="openAccountModal()" aria-label="Your account">
         <span class="climber-chip-avatar">{{ current_climber.name[0].upper() }}</span>
-        {% else %}
-        <span class="climber-chip-avatar" style="background:var(--surf2); border:1.5px dashed var(--border); color:var(--muted);">?</span>
-        {% endif %}
       </button>
+      {% elif not is_admin %}
+      <a href="{{ url_for('login') }}" class="nav-mobile-avatar" aria-label="Sign in">
+        <span class="climber-chip-avatar" style="background:var(--surf2); border:1.5px dashed var(--border); color:var(--muted);">?</span>
+      </a>
+      {% endif %}
       <button class="nav-hamburger" onclick="openDrawer()" aria-label="Menu">
         <span></span><span></span><span></span>
       </button>
     </span>
   </nav>
 
-  <!-- Climber picker modal -->
-  <div class="overlay" id="climber-overlay" onclick="closeClimberModal()">
-    <div class="modal-box" onclick="event.stopPropagation()" style="max-height:80vh; overflow-y:auto; width:min(340px,92vw);">
-      <h2 style="margin-bottom:.4rem;">Who are you?</h2>
-      <p style="color:var(--muted); font-size:0.85rem; margin-bottom:1.1rem;">
-        Select your name to personalise your experience.
-      </p>
-      <div style="display:flex; flex-direction:column; gap:0.4rem;">
-        {% for u in all_users %}
-        <form method="POST" action="/set_climber" style="margin:0;">
-          <input type="hidden" name="climber_id" value="{{ u.id }}">
-          <input type="hidden" name="next" value="{{ request.url }}">
-          <button type="submit"
-                  class="climber-select-btn {% if current_climber and current_climber.id == u.id %}active{% endif %}">
-            <span class="cs-avatar">{{ u.name[0].upper() }}</span>
-            {{ u.name }}
-            {% if current_climber and current_climber.id == u.id %}
-            <span class="check">✓</span>
-            {% endif %}
-          </button>
-        </form>
-        {% endfor %}
+  <!-- Account modal (shown when signed in) -->
+  {% if current_climber %}
+  <div class="overlay" id="account-overlay" onclick="closeAccountModal()">
+    <div class="modal-box" onclick="event.stopPropagation()" style="width:min(300px,92vw);">
+      <div style="display:flex; align-items:center; gap:0.75rem; margin-bottom:1.1rem;">
+        <span class="climber-chip-avatar" style="width:40px;height:40px;font-size:1.1rem;">{{ current_climber.name[0].upper() }}</span>
+        <div>
+          <div style="font-weight:700; font-size:1rem;">{{ current_climber.name }}</div>
+          <a href="{{ url_for('climber_profile', user_id=current_climber.id) }}"
+             style="font-size:0.82rem; color:var(--accent); text-decoration:none;"
+             onclick="closeAccountModal()">View profile →</a>
+        </div>
       </div>
-      {% if current_climber %}
-      <form method="POST" action="/clear_climber" style="margin-top:1rem;">
+      <form method="POST" action="{{ url_for('logout') }}">
         <input type="hidden" name="next" value="{{ request.url }}">
         <button type="submit" class="btn btn-secondary" style="width:100%;">Sign out</button>
       </form>
-      {% endif %}
-      <button onclick="closeClimberModal()" class="btn btn-secondary"
+      <button onclick="closeAccountModal()" class="btn btn-secondary"
               style="width:100%; margin-top:0.5rem;">Cancel</button>
     </div>
   </div>
+  {% endif %}
 
   <!-- Drawer overlay -->
   <div class="drawer-overlay" id="drawer-overlay" onclick="closeDrawer()"></div>
@@ -972,46 +960,44 @@ function bulkClear() {
         <span class="climber-chip-avatar" style="width:32px;height:32px;font-size:0.9rem;">{{ current_climber.name[0].upper() }}</span>
         <div>
           <div style="font-weight:700; font-size:0.9rem; line-height:1.2;">{{ current_climber.name }}</div>
-          <button onclick="openClimberModal(); closeDrawer();" type="button"
-                  style="background:none;border:none;color:var(--accent);font-size:0.75rem;cursor:pointer;padding:0;">Switch</button>
+          <form method="POST" action="{{ url_for('logout') }}" style="margin:0; display:inline;">
+            <input type="hidden" name="next" value="{{ url_for('index') }}">
+            <button type="submit" style="background:none;border:none;color:var(--accent);font-size:0.75rem;cursor:pointer;padding:0;" onclick="closeDrawer()">Sign out</button>
+          </form>
         </div>
       </div>
       {% else %}
-      <button onclick="openClimberModal(); closeDrawer();" type="button"
-              class="btn btn-primary" style="padding:0.4rem 1rem; font-size:0.85rem; min-height:unset;">
+      <a href="{{ url_for('login') }}" class="btn btn-primary" style="padding:0.4rem 1rem; font-size:0.85rem; min-height:unset;" onclick="closeDrawer()">
         Sign in
-      </button>
+      </a>
       {% endif %}
       <button class="drawer-close" onclick="closeDrawer()">✕</button>
     </div>
     <a href="/"            class="drawer-link {% if request.endpoint == 'index'       %}active{% endif %}"><span class="dl-icon">🏠</span> Home</a>
     <a href="/leaderboard" class="drawer-link {% if request.endpoint == 'leaderboard' %}active{% endif %}"><span class="dl-icon">🏆</span> Leaderboard</a>
     <a href="/sessions"    class="drawer-link {% if request.endpoint in ('sessions','session_detail') %}active{% endif %}"><span class="dl-icon">📋</span> Sessions</a>
-    <a href="/stats"       class="drawer-link {% if request.endpoint == 'stats'       %}active{% endif %}"><span class="dl-icon">📊</span> Stats</a>
     <a href="/records"     class="drawer-link {% if request.endpoint == 'records'     %}active{% endif %}"><span class="dl-icon">🎖️</span> Records</a>
     <a href="/competitions" class="drawer-link {% if request.endpoint in ('competitions','competition_detail','log_comp_send') %}active{% endif %}"><span class="dl-icon">🥇</span> Competitions</a>
     {% if current_climber %}
     <a href="/climber/{{ current_climber.id }}" class="drawer-link {% if request.endpoint == 'climber_profile' %}active{% endif %}"><span class="dl-icon">👤</span> My Profile</a>
-    <a href="/achievements" class="drawer-link {% if request.endpoint == 'achievements' %}active{% endif %}"><span class="dl-icon">🏅</span> My Achievements</a>
+    <a href="{{ url_for('climber_achievements', user_id=current_climber.id) }}" class="drawer-link {% if request.endpoint == 'climber_achievements' %}active{% endif %}"><span class="dl-icon">🏅</span> My Achievements</a>
     {% endif %}
     <div class="drawer-divider"></div>
     {% if is_admin %}
     <span style="padding:0.5rem 1.25rem; font-size:0.8rem; color:var(--accent); font-weight:700;">🔑 Admin</span>
-    <form method="POST" action="/admin/logout" style="padding: 0 1.25rem;">
+    <form method="POST" action="/logout" style="padding: 0 1.25rem;">
       <button type="submit" class="btn btn-secondary" style="width:100%;">Logout</button>
     </form>
-    {% else %}
-    <a href="/admin/login" class="drawer-link"><span class="dl-icon">🔒</span> Admin Login</a>
     {% endif %}
   </div>
 
   <script>
-  function openClimberModal() {
-    document.getElementById('climber-overlay').classList.add('open');
+  function openAccountModal() {
+    document.getElementById('account-overlay').classList.add('open');
     document.body.style.overflow = 'hidden';
   }
-  function closeClimberModal() {
-    document.getElementById('climber-overlay').classList.remove('open');
+  function closeAccountModal() {
+    document.getElementById('account-overlay').classList.remove('open');
     document.body.style.overflow = '';
   }
   function openDrawer() {

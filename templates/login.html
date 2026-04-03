@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Sign In — ClimbTracker{% endblock %}
+{% block content %}
+<div style="max-width:380px; margin:3rem auto 0;">
+  <h1 style="margin-bottom:0.25rem;">Sign In</h1>
+  <p style="color:var(--muted); font-size:0.9rem; margin-bottom:1.5rem;">
+    Don't have an account? <a href="{{ url_for('register') }}" style="color:var(--accent); text-decoration:none;">Register</a>
+  </p>
+
+  {% if error %}
+  <div class="alert-error">{{ error }}</div>
+  {% endif %}
+
+  <div class="card">
+    <form method="POST" action="{{ url_for('login') }}">
+      <input type="hidden" name="next" value="{{ next }}">
+
+      <div class="form-group">
+        <label class="field-label" for="login-name">Name</label>
+        <input type="text" id="login-name" name="name"
+               value="{{ name_val }}"
+               placeholder="Your climber name"
+               required autocomplete="username" maxlength="50" autofocus>
+      </div>
+
+      <div class="form-group">
+        <label class="field-label" for="login-pw">Password</label>
+        <input type="password" id="login-pw" name="password"
+               placeholder="••••••••"
+               required autocomplete="current-password">
+      </div>
+
+      <button type="submit" class="btn btn-primary" style="width:100%; margin-top:0.25rem;">Sign In</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

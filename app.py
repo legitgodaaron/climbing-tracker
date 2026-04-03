@@ -1,10 +1,11 @@
 import os
 import json
 import psycopg2
-from datetime import datetime
+from datetime import datetime, timedelta
 from psycopg2.extras import RealDictCursor
 from psycopg2 import pool as pg_pool
 from flask import Flask, render_template, request, redirect, url_for, session as flask_session, g, flash
+from werkzeug.security import generate_password_hash, check_password_hash
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -14,6 +15,7 @@ if not _db_url:
     raise RuntimeError("DATABASE_URL environment variable is not set.")
 DATABASE_URL     = _db_url.replace('postgres://', 'postgresql://', 1)
 app.secret_key   = os.environ.get('SECRET_KEY', 'dev-secret-change-in-prod')
+app.permanent_session_lifetime = timedelta(days=30)
 ADMIN_PASSWORD   = os.environ.get('ADMIN_PASSWORD', '')
 
 # ── Grade definitions ──────────────────────────────────────────────────────────
@@ -30,6 +32,25 @@ GRADE_COLORS = [
 ]
 
 GRADE_MAP    = {g['key']: g for g in GRADE_COLORS}
+
+# Sub-grades for the white tag (V7+), progressive points starting at 50.
+WHITE_SUBGRADES = [
+    {'key': 'v7',  'label': 'V7',  'points':  50},
+    {'key': 'v8',  'label': 'V8',  'points':  70},
+    {'key': 'v9',  'label': 'V9',  'points':  95},
+    {'key': 'v10', 'label': 'V10', 'points': 125},
+    {'key': 'v11', 'label': 'V11', 'points': 160},
+    {'key': 'v12', 'label': 'V12', 'points': 200},
+    {'key': 'v13', 'label': 'V13', 'points': 245},
+    {'key': 'v14', 'label': 'V14', 'points': 295},
+    {'key': 'v15', 'label': 'V15', 'points': 350},
+    {'key': 'v16', 'label': 'V16', 'points': 410},
+    {'key': 'v17', 'label': 'V17', 'points': 475},
+    {'key': 'v18', 'label': 'V18', 'points': 545},
+]
+WHITE_SUBGRADE_MAP    = {g['key']: g for g in WHITE_SUBGRADES}
+VALID_WHITE_SUBGRADES = set(WHITE_SUBGRADE_MAP.keys())
+
 VALID_TYPES  = {'overhang', 'neutral', 'slab'}
 VALID_STYLES = {'dyno', 'static'}
 VALID_HOLDS  = {'jugs', 'crimps', 'slopers', 'dual-tex'}
@@ -108,6 +129,7 @@ def build_climb_form_data(*, climb=None, user_id=None, selected_session_id=None,
             'alt_user_id': alt_user_id,
             'session_id': '' if climb['session_id'] is None else str(climb['session_id']),
             'grade_color': climb['grade_color'],
+            'sub_grade': climb.get('sub_grade', '') or '',
             'climb_type': climb['climb_type'],
             'style': climb['style'],
             'holds': parse_hold_list(climb['holds']),
@@ -120,6 +142,7 @@ def build_climb_form_data(*, climb=None, user_id=None, selected_session_id=None,
         'alt_user_id': alt_user_id,
         'session_id': '' if selected_session_id is None else str(selected_session_id),
         'grade_color': '',
+        'sub_grade': '',
         'climb_type': '',
         'style': '',
         'holds': [],
@@ -186,6 +209,18 @@ def init_db():
         cur.execute('ALTER TABLE climbs ADD COLUMN flashed INTEGER NOT NULL DEFAULT 0')
     if 'attempts' not in cols:
         cur.execute('ALTER TABLE climbs ADD COLUMN attempts INTEGER NOT NULL DEFAULT 1')
+    if 'sub_grade' not in cols:
+        cur.execute('ALTER TABLE climbs ADD COLUMN sub_grade TEXT')
+    conn.commit()
+
+    # Migrate users: add password_hash if absent
+    cur.execute("""
+        SELECT column_name FROM information_schema.columns
+        WHERE table_name = 'users'
+    """)
+    user_cols = [row['column_name'] for row in cur.fetchall()]
+    if 'password_hash' not in user_cols:
+        cur.execute('ALTER TABLE users ADD COLUMN password_hash TEXT')
     conn.commit()
 
     cur.execute('''
@@ -297,6 +332,8 @@ def index():
 
 @app.route('/add_user', methods=['POST'])
 def add_user():
+    if not is_admin():
+        return redirect(url_for('admin_login'))
     name = request.form.get('name', '').strip()
     if 1 <= len(name) <= 50:
         conn = get_db()
@@ -342,6 +379,7 @@ def log_climb():
             'alt_user_id': request.form.get('alt_user_id', '').strip(),
             'session_id': request.form.get('session_id', '').strip(),
             'grade_color': request.form.get('grade_color', ''),
+            'sub_grade': request.form.get('sub_grade', '').strip(),
             'climb_type': request.form.get('climb_type', '').strip(),
             'style': request.form.get('style', '').strip(),
             'holds': [hold for hold in request.form.getlist('holds') if hold],
@@ -370,6 +408,7 @@ def log_climb():
             field_errors['user_id'] = 'Please select a valid climber.'
 
         grade = form_data['grade_color']
+        sub_grade = form_data['sub_grade']
         ctype = form_data['climb_type']
         style = form_data['style']
         holds = form_data['holds']
@@ -397,6 +436,8 @@ def log_climb():
 
         if grade not in GRADE_MAP:
             field_errors['grade_color'] = 'Please select a grade.'
+        elif grade == 'white' and sub_grade not in VALID_WHITE_SUBGRADES:
+            field_errors['sub_grade'] = 'Please select a V-grade for the white tag.'
         elif ctype and ctype not in VALID_TYPES:
             field_errors['climb_type'] = 'Please select a climb type.'
         elif style and style not in VALID_STYLES:
@@ -407,17 +448,21 @@ def log_climb():
         if field_errors:
             error = next(iter(field_errors.values()))
             return render_template('log.html', users=users, grades=GRADE_COLORS,
+                                   white_subgrades=WHITE_SUBGRADES,
                                    active_sessions=active_sessions, error=error,
                                    field_errors=field_errors, form_data=form_data,
                                    success_state=success_state)
 
-        points = GRADE_MAP[grade]['points']
+        if grade == 'white' and sub_grade in WHITE_SUBGRADE_MAP:
+            points = WHITE_SUBGRADE_MAP[sub_grade]['points']
+        else:
+            points = GRADE_MAP[grade]['points']
         conn = get_db()
         cur = conn.cursor()
         cur.execute(
-            'INSERT INTO climbs (user_id, session_id, grade_color, climb_type, style, holds, points, flashed, attempts) '
-            'VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)',
-            (user_id, session_id, grade, ctype, style, json.dumps(holds), points, flashed, attempts)
+            'INSERT INTO climbs (user_id, session_id, grade_color, sub_grade, climb_type, style, holds, points, flashed, attempts) '
+            'VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)',
+            (user_id, session_id, grade, sub_grade or None, ctype, style, json.dumps(holds), points, flashed, attempts)
         )
         conn.commit()
         cur.close()
@@ -432,6 +477,7 @@ def log_climb():
         return redirect(url_for('log_climb'))
 
     return render_template('log.html', users=users, grades=GRADE_COLORS,
+                           white_subgrades=WHITE_SUBGRADES,
                            active_sessions=active_sessions,
                            selected_session_id=selected_session_id,
                            form_data=form_data,
@@ -471,6 +517,7 @@ def edit_climb(climb_id):
             'alt_user_id': '',
             'session_id': request.form.get('session_id', '').strip(),
             'grade_color': request.form.get('grade_color', ''),
+            'sub_grade': request.form.get('sub_grade', '').strip(),
             'climb_type': request.form.get('climb_type', '').strip(),
             'style': request.form.get('style', '').strip(),
             'holds': [hold for hold in request.form.getlist('holds') if hold],
@@ -479,6 +526,7 @@ def edit_climb(climb_id):
         }
 
         grade = form_data['grade_color']
+        sub_grade = form_data['sub_grade']
         ctype = form_data['climb_type']
         style = form_data['style']
         holds = form_data['holds']
@@ -506,6 +554,8 @@ def edit_climb(climb_id):
 
         if grade not in GRADE_MAP:
             field_errors['grade_color'] = 'Please select a grade.'
+        elif grade == 'white' and sub_grade not in VALID_WHITE_SUBGRADES:
+            field_errors['sub_grade'] = 'Please select a V-grade for the white tag.'
         elif ctype and ctype not in VALID_TYPES:
             field_errors['climb_type'] = 'Please select a climb type.'
         elif style and style not in VALID_STYLES:
@@ -520,13 +570,17 @@ def edit_climb(climb_id):
                 climb=climb,
                 climber_name=climb['climber_name'],
                 grades=GRADE_COLORS,
+                white_subgrades=WHITE_SUBGRADES,
                 session_options=session_options,
                 field_errors=field_errors,
                 error=error,
                 form_data=form_data,
             )
 
-        points = GRADE_MAP[grade]['points']
+        if grade == 'white' and sub_grade in WHITE_SUBGRADE_MAP:
+            points = WHITE_SUBGRADE_MAP[sub_grade]['points']
+        else:
+            points = GRADE_MAP[grade]['points']
         conn = get_db()
         cur = conn.cursor()
         cur.execute(
@@ -534,6 +588,7 @@ def edit_climb(climb_id):
             UPDATE climbs
             SET    session_id = %s,
                    grade_color = %s,
+                   sub_grade = %s,
                    climb_type = %s,
                    style = %s,
                    holds = %s,
@@ -542,7 +597,7 @@ def edit_climb(climb_id):
                    attempts = %s
             WHERE  id = %s
             ''',
-            (session_id, grade, ctype, style, json.dumps(holds), points, flashed, attempts, climb_id)
+            (session_id, grade, sub_grade or None, ctype, style, json.dumps(holds), points, flashed, attempts, climb_id)
         )
         conn.commit()
         cur.close()
@@ -558,6 +613,7 @@ def edit_climb(climb_id):
         climb=climb,
         climber_name=climb['climber_name'],
         grades=GRADE_COLORS,
+        white_subgrades=WHITE_SUBGRADES,
         session_options=session_options,
         field_errors=field_errors,
         error=None,
@@ -581,6 +637,7 @@ def leaderboard():
 
     stats = {
         u['id']: {
+            'id':           u['id'],
             'name':         u['name'],
             'total_points': 0,
             'total_climbs': 0,
@@ -617,48 +674,117 @@ def leaderboard():
 
 @app.route('/admin/login', methods=['GET', 'POST'])
 def admin_login():
-    error = None
-    if request.method == 'POST':
-        pw = request.form.get('password', '')
-        if ADMIN_PASSWORD and pw == ADMIN_PASSWORD:
-            flask_session['is_admin'] = True
-            next_url = request.form.get('next', '') or url_for('index')
-            return redirect(next_url)
-        error = 'Wrong password.'
-    return render_template('admin_login.html', error=error,
-                           next=request.args.get('next', ''))
+    # Legacy route — just redirect to the regular login page
+    return redirect(url_for('login', next=request.args.get('next', '')))
 
 
 @app.route('/admin/logout', methods=['POST'])
 def admin_logout():
     flask_session.pop('is_admin', None)
+    flask_session.pop('climber_id', None)
+    flask_session.pop('climber_name', None)
     return redirect(url_for('index'))
 
 
 # ── Climber identity routes ──────────────────────────────────────────────────
 
-@app.route('/set_climber', methods=['POST'])
-def set_climber():
-    next_url = request.form.get('next', '') or url_for('index')
-    try:
-        climber_id = int(request.form.get('climber_id', ''))
-    except (ValueError, TypeError):
-        return redirect(next_url)
-    conn = get_db()
-    cur  = conn.cursor()
-    cur.execute('SELECT id, name FROM users WHERE id = %s', (climber_id,))
-    user = cur.fetchone()
-    cur.close()
-    if user:
-        flask_session['climber_id']   = user['id']
-        flask_session['climber_name'] = user['name']
-    return redirect(next_url)
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if flask_session.get('climber_id') or flask_session.get('is_admin'):
+        return redirect(url_for('index'))
+    error = None
+    next_url = request.args.get('next', '') or url_for('index')
+    name_val = ''
+    if request.method == 'POST':
+        name     = request.form.get('name', '').strip()
+        password = request.form.get('password', '')
+        next_url = request.form.get('next', '') or url_for('index')
+        name_val = name
+        # Admin account — never stored in the users table
+        if name.lower() == 'admin':
+            if ADMIN_PASSWORD and password == ADMIN_PASSWORD:
+                flask_session.permanent = True
+                flask_session['is_admin'] = True
+                return redirect(next_url)
+            error = 'Invalid name or password.'
+            return render_template('login.html', error=error, next=next_url, name_val=name_val)
+        conn = get_db()
+        cur  = conn.cursor()
+        cur.execute('SELECT id, name, password_hash FROM users WHERE name = %s', (name,))
+        user = cur.fetchone()
+        cur.close()
+        if user is None or not user['password_hash'] or not check_password_hash(user['password_hash'], password):
+            error = 'Invalid name or password.'
+        else:
+            flask_session.permanent = True
+            flask_session['climber_id']   = user['id']
+            flask_session['climber_name'] = user['name']
+            return redirect(next_url)
+    return render_template('login.html', error=error, next=next_url, name_val=name_val)
 
 
-@app.route('/clear_climber', methods=['POST'])
-def clear_climber():
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    if flask_session.get('climber_id'):
+        return redirect(url_for('index'))
+    error = None
+    form_data = {'name': ''}
+    if request.method == 'POST':
+        name     = request.form.get('name', '').strip()
+        password = request.form.get('password', '')
+        confirm  = request.form.get('confirm', '')
+        form_data = {'name': name}
+        if name.lower() == 'admin':
+            error = 'That name is not available.'
+        elif not (1 <= len(name) <= 50):
+            error = 'Name must be between 1 and 50 characters.'
+        elif len(password) < 6:
+            error = 'Password must be at least 6 characters.'
+        elif password != confirm:
+            error = 'Passwords do not match.'
+        else:
+            conn = get_db()
+            cur  = conn.cursor()
+            cur.execute('SELECT id, password_hash FROM users WHERE name = %s', (name,))
+            existing = cur.fetchone()
+            if existing and existing['password_hash']:
+                error = 'That name is already taken.'
+                cur.close()
+            elif existing and not existing['password_hash']:
+                # Claim an account created by admin (no password yet)
+                cur.execute('UPDATE users SET password_hash = %s WHERE id = %s',
+                            (generate_password_hash(password), existing['id']))
+                conn.commit()
+                cur.close()
+                flask_session.permanent = True
+                flask_session['climber_id']   = existing['id']
+                flask_session['climber_name'] = name
+                return redirect(url_for('index'))
+            else:
+                try:
+                    cur.execute(
+                        'INSERT INTO users (name, password_hash) VALUES (%s, %s) RETURNING id',
+                        (name, generate_password_hash(password))
+                    )
+                    new_id = cur.fetchone()['id']
+                    conn.commit()
+                    cur.close()
+                    flask_session.permanent = True
+                    flask_session['climber_id']   = new_id
+                    flask_session['climber_name'] = name
+                    return redirect(url_for('index'))
+                except psycopg2.IntegrityError:
+                    conn.rollback()
+                    cur.close()
+                    error = 'That name is already taken.'
+    return render_template('register.html', error=error, form_data=form_data)
+
+
+@app.route('/logout', methods=['POST'])
+def logout():
     flask_session.pop('climber_id',   None)
     flask_session.pop('climber_name', None)
+    flask_session.pop('is_admin',     None)
     next_url = request.form.get('next', '') or url_for('index')
     return redirect(next_url)
 
@@ -691,21 +817,29 @@ def delete_user(user_id):
     cur.execute('DELETE FROM users      WHERE id = %s',      (user_id,))
     conn.commit()
     cur.close()
-    return redirect(url_for('stats'))
+    return redirect(url_for('leaderboard'))
 
 
 @app.route('/delete_climb/<int:climb_id>', methods=['POST'])
 def delete_climb(climb_id):
-    if not is_admin():
-        return redirect(url_for('admin_login'))
     conn = get_db()
     cur  = conn.cursor()
-    cur.execute('SELECT session_id FROM climbs WHERE id = %s', (climb_id,))
+    cur.execute('SELECT user_id, session_id FROM climbs WHERE id = %s', (climb_id,))
     row  = cur.fetchone()
+    if row is None:
+        cur.close()
+        return redirect(url_for('index'))
+    if not can_manage_climb(row['user_id']):
+        cur.close()
+        flash('You can only delete your own climbs.', 'error')
+        return redirect(url_for('climber_profile', user_id=row['user_id']))
     cur.execute('DELETE FROM climbs WHERE id = %s', (climb_id,))
     conn.commit()
     cur.close()
-    if row and row['session_id']:
+    next_url = request.form.get('next', '')
+    if next_url:
+        return redirect(next_url)
+    if row['session_id']:
         return redirect(url_for('session_detail', session_id=row['session_id']))
     return redirect(url_for('index'))
 
@@ -1021,18 +1155,20 @@ def achievements():
     climber_id = flask_session.get('climber_id')
     if not climber_id:
         return redirect(url_for('index'))
+    return redirect(url_for('climber_achievements', user_id=climber_id))
 
+
+@app.route('/climber/<int:user_id>/achievements')
+def climber_achievements(user_id):
     conn = get_db()
     cur  = conn.cursor()
-    cur.execute('SELECT * FROM users WHERE id = %s', (climber_id,))
+    cur.execute('SELECT * FROM users WHERE id = %s', (user_id,))
     user = cur.fetchone()
     if user is None:
-        flask_session.pop('climber_id',   None)
-        flask_session.pop('climber_name', None)
         cur.close()
         return redirect(url_for('index'))
 
-    cur.execute('SELECT * FROM climbs WHERE user_id = %s ORDER BY date ASC', (climber_id,))
+    cur.execute('SELECT * FROM climbs WHERE user_id = %s ORDER BY date ASC', (user_id,))
     climbs = cur.fetchall()
     cur.close()
 
@@ -1123,7 +1259,7 @@ def climber_profile(user_id):
     user = cur.fetchone()
     if user is None:
         cur.close()
-        return redirect(url_for('stats'))
+        return redirect(url_for('leaderboard'))
 
     cur.execute('''
         SELECT c.*, s.gym_name AS session_gym

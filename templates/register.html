@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Register — ClimbTracker{% endblock %}
+{% block content %}
+<div style="max-width:380px; margin:3rem auto 0;">
+  <h1 style="margin-bottom:0.25rem;">Create Account</h1>
+  <p style="color:var(--muted); font-size:0.9rem; margin-bottom:1.5rem;">
+    Already have an account? <a href="{{ url_for('login') }}" style="color:var(--accent); text-decoration:none;">Sign in</a>
+  </p>
+
+  {% if error %}
+  <div class="alert-error">{{ error }}</div>
+  {% endif %}
+
+  <div class="card">
+    <form method="POST" action="{{ url_for('register') }}">
+
+      <div class="form-group">
+        <label class="field-label" for="reg-name">Climber Name</label>
+        <input type="text" id="reg-name" name="name"
+               value="{{ form_data.name }}"
+               placeholder="e.g. Alex Honnold"
+               required autocomplete="username" maxlength="50" autofocus>
+        <div style="color:var(--muted); font-size:0.78rem; margin-top:0.35rem;">
+          If your name was already added by an admin, use the same name to claim your account.
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="field-label" for="reg-pw">Password</label>
+        <input type="password" id="reg-pw" name="password"
+               placeholder="Minimum 6 characters"
+               required autocomplete="new-password" minlength="6">
+      </div>
+
+      <div class="form-group">
+        <label class="field-label" for="reg-confirm">Confirm Password</label>
+        <input type="password" id="reg-confirm" name="confirm"
+               placeholder="Repeat password"
+               required autocomplete="new-password">
+      </div>
+
+      <button type="submit" class="btn btn-primary" style="width:100%; margin-top:0.25rem;">Create Account</button>
+    </form>
+  </div>
+</div>
+{% endblock %}
