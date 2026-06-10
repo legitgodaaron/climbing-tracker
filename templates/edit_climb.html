@@ -16,6 +16,7 @@
   {% endif %}
 
   <form method="POST" action="{{ url_for('edit_climb', climb_id=climb.id) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="form-group">
       <label class="field-label">Climber</label>
       <div style="padding:0.7rem 0.9rem; border:1px solid var(--border); border-radius:8px; background:var(--surf2); font-weight:600;">{{ climber_name }}</div>

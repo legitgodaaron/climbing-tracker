@@ -12,8 +12,12 @@
     <button class="btn btn-secondary" onclick="document.getElementById('modal-rename').classList.add('open')">Rename</button>
     <form method="POST" action="{{ url_for('delete_user', user_id=user.id) }}"
           onsubmit="return confirm('Delete {{ user.name }} and ALL their climbs? This cannot be undone.')">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <button type="submit" class="btn btn-secondary" style="color:#ff8b82; border-color:rgba(231,76,60,.35);">Delete</button>
     </form>
+    {% endif %}
+    {% if current_climber and current_climber.id == user.id %}
+    <a href="{{ url_for('my_climbs') }}" class="btn btn-secondary">🔍 My Climbs</a>
     {% endif %}
     <a href="{{ url_for('climber_achievements', user_id=user.id) }}" class="btn btn-secondary">🏅 Achievements</a>
   </div>
@@ -24,6 +28,7 @@
   <div class="modal-box">
     <h2>Rename Climber</h2>
     <form method="POST" action="{{ url_for('rename_user', user_id=user.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div class="form-group">
         <label class="field-label" for="rname">New Name</label>
         <input type="text" name="name" id="rname"
@@ -41,6 +46,14 @@
   </div>
 </div>
 {% endif %}
+
+<!-- ── Period filter ──────────────────────────────────────── -->
+<div class="period-tabs">
+  <a href="?period=7d"  class="period-tab {% if period == '7d'  %}active{% endif %}">7 days</a>
+  <a href="?period=30d" class="period-tab {% if period == '30d' %}active{% endif %}">30 days</a>
+  <a href="?period=90d" class="period-tab {% if period == '90d' %}active{% endif %}">3 months</a>
+  <a href="?period=all" class="period-tab {% if period == 'all' %}active{% endif %}">All time</a>
+</div>
 
 {% if total_climbs == 0 %}
 <div class="card empty-state">No climbs logged yet. <a href="/log">Log the first one!</a></div>
@@ -76,10 +89,24 @@
   </div>
   {% endif %}
   <div class="cp-stat">
-    <div class="cp-val">{{ session_rows | length }}</div>
+    <div class="cp-val">{{ total_sessions }}</div>
     <div class="cp-lbl">Sessions</div>
   </div>
 </div>
+
+<!-- ── Progress charts ────────────────────────────────────── -->
+{% if weekly_vol.data %}
+<div class="charts-row">
+  <div class="chart-card">
+    <div class="chart-title">Weekly Volume</div>
+    <canvas id="chart-volume" height="160"></canvas>
+  </div>
+  <div class="chart-card">
+    <div class="chart-title">Grade Progression</div>
+    <canvas id="chart-grade" height="160"></canvas>
+  </div>
+</div>
+{% endif %}
 
 <!-- ── Grade breakdown ────────────────────────────────────── -->
 <h2 style="margin:1.75rem 0 .8rem;">Grade Breakdown</h2>
@@ -196,6 +223,21 @@
   </a>
   {% endfor %}
 </div>
+{% if session_pages > 1 %}
+<div class="pagination">
+  {% if sp > 1 %}
+  <a href="{{ url_for('climber_profile', user_id=user.id, period=period, page=page, sp=sp-1) }}" class="page-btn">&larr; Prev</a>
+  {% else %}
+  <span class="page-btn disabled">&larr; Prev</span>
+  {% endif %}
+  <span class="page-info">{{ sp }} / {{ session_pages }}</span>
+  {% if sp < session_pages %}
+  <a href="{{ url_for('climber_profile', user_id=user.id, period=period, page=page, sp=sp+1) }}" class="page-btn">Next &rarr;</a>
+  {% else %}
+  <span class="page-btn disabled">Next &rarr;</span>
+  {% endif %}
+</div>
+{% endif %}
 {% endif %}
 
 <!-- ── Recent climbs ──────────────────────────────────────── -->
@@ -240,6 +282,7 @@
       <a href="{{ url_for('edit_climb', climb_id=c.id) }}" class="feed-action-link">Edit</a>
       <form method="POST" action="{{ url_for('delete_climb', climb_id=c.id) }}" style="margin:0;"
             onsubmit="return confirm('Delete this climb? This cannot be undone.')">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="next" value="{{ url_for('climber_profile', user_id=user.id) }}">
         <button type="submit" class="feed-action-link"
                 style="background:none; border:none; cursor:pointer; color:var(--danger); border-color:rgba(231,76,60,.25);">Delete</button>
@@ -250,8 +293,101 @@
   </div>
   {% endfor %}
 </div>
+{% if activity_pages > 1 %}
+<div class="pagination">
+  {% if page > 1 %}
+  <a href="{{ url_for('climber_profile', user_id=user.id, period=period, page=page-1, sp=sp) }}" class="page-btn">&larr; Prev</a>
+  {% else %}
+  <span class="page-btn disabled">&larr; Prev</span>
+  {% endif %}
+  <span class="page-info">{{ page }} / {{ activity_pages }}</span>
+  {% if page < activity_pages %}
+  <a href="{{ url_for('climber_profile', user_id=user.id, period=period, page=page+1, sp=sp) }}" class="page-btn">Next &rarr;</a>
+  {% else %}
+  <span class="page-btn disabled">Next &rarr;</span>
+  {% endif %}
+</div>
+{% endif %}
 
 {% endif %}{# end if total_climbs #}
+
+{% if weekly_vol.data %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script>
+(function() {
+  const MUTED   = '#9aa0b4';
+  const BORDER  = 'rgba(255,255,255,0.08)';
+  const ACCENT  = '#7c6cff';
+  const GRADE_LABELS = ['Orange','Yellow','Green','Blue','Purple','Red','Black','White'];
+
+  Chart.defaults.color = MUTED;
+
+  const volData  = {{ weekly_vol | tojson }};
+  const progData = {{ grade_prog | tojson }};
+
+  new Chart(document.getElementById('chart-volume'), {
+    type: 'bar',
+    data: {
+      labels: volData.labels,
+      datasets: [{
+        data: volData.data,
+        backgroundColor: ACCENT + '99',
+        borderColor: ACCENT,
+        borderWidth: 1,
+        borderRadius: 4,
+      }]
+    },
+    options: {
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { grid: { color: BORDER }, ticks: { maxRotation: 45 } },
+        y: { grid: { color: BORDER }, beginAtZero: true, ticks: { stepSize: 1 } }
+      }
+    }
+  });
+
+  new Chart(document.getElementById('chart-grade'), {
+    type: 'line',
+    data: {
+      labels: progData.labels,
+      datasets: [{
+        data: progData.data,
+        borderColor: ACCENT,
+        backgroundColor: ACCENT + '22',
+        pointBackgroundColor: progData.hex,
+        pointBorderColor: progData.hex,
+        pointRadius: 5,
+        tension: 0.3,
+        fill: true,
+      }]
+    },
+    options: {
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: function(ctx) {
+              return progData.grade_labels[ctx.dataIndex] || '';
+            }
+          }
+        }
+      },
+      scales: {
+        x: { grid: { color: BORDER }, ticks: { maxRotation: 45 } },
+        y: {
+          grid: { color: BORDER },
+          min: 0, max: 7, stepSize: 1,
+          ticks: {
+            stepSize: 1,
+            callback: function(v) { return GRADE_LABELS[v] || ''; }
+          }
+        }
+      }
+    }
+  });
+})();
+</script>
+{% endif %}
 
 <style>
   /* Summary strip */
@@ -295,6 +431,24 @@
   .pref-bar-wrap { flex: 1; background: var(--surf2); border-radius: 999px; height: 7px; overflow: hidden; }
   .pref-bar      { height: 100%; border-radius: 999px; background: var(--accent); opacity: .75; transition: width .3s; }
   .pref-pct   { width: 36px; text-align: right; font-size: .8rem; color: var(--muted); flex-shrink: 0; }
+
+  /* Period filter tabs */
+  .period-tabs { display: flex; gap: .4rem; margin-bottom: 1.25rem; flex-wrap: wrap; }
+  .period-tab  {
+    padding: .3rem .8rem; border-radius: 999px; font-size: .8rem; font-weight: 600;
+    border: 1px solid var(--border); color: var(--muted); text-decoration: none;
+    transition: border-color .15s, color .15s, background .15s;
+  }
+  .period-tab:hover  { border-color: var(--accent); color: var(--accent); }
+  .period-tab.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+  /* Charts */
+  .charts-row  { display: flex; gap: 1rem; margin: 1.25rem 0; flex-wrap: wrap; }
+  .chart-card  {
+    flex: 1 1 280px; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 1rem 1.25rem;
+  }
+  .chart-title { font-size: .75rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin-bottom: .75rem; }
 </style>
 
 {% endblock %}

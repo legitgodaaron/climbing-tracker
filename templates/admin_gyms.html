@@ -22,10 +22,12 @@
     </div>
     <div style="display:flex; gap:.5rem; flex-shrink:0;">
       <form method="POST" action="{{ url_for('approve_gym', gym_id=gym.id) }}" style="margin:0;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button type="submit" class="btn btn-primary" style="padding:.4rem .85rem;">Approve</button>
       </form>
       <form method="POST" action="{{ url_for('reject_gym', gym_id=gym.id) }}" style="margin:0;"
             onsubmit="return confirm('Reject and delete this request?')">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button type="submit" class="btn btn-secondary"
                 style="color:#ff8b82; border-color:rgba(231,76,60,.35); padding:.4rem .85rem;">Reject</button>
       </form>
@@ -52,6 +54,7 @@
         <a href="{{ url_for('edit_gym_grades', gym_id=gym.id) }}" class="btn btn-secondary" style="padding:.4rem .85rem;">Edit Grades</a>
         <form method="POST" action="{{ url_for('delete_gym', gym_id=gym.id) }}" style="margin:0;"
               onsubmit="return confirm('Delete {{ gym.name }}? This cannot be undone.')">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button type="submit" class="btn btn-secondary"
                   style="color:#ff8b82; border-color:rgba(231,76,60,.35); padding:.4rem .65rem;" title="Delete gym">&times; Delete</button>
         </form>

@@ -17,6 +17,7 @@
     <div class="feed-dot" style="background:{{ g.hex }};"></div>
     <div class="feed-body">
       <form method="POST" action="{{ url_for('edit_gym_grades', gym_id=gym.id) }}" style="display:contents;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="action" value="update">
         <input type="hidden" name="grade_id" value="{{ g.id }}">
         <div style="display:grid; grid-template-columns: 1fr 1fr; gap:.5rem .75rem; align-items:end;">
@@ -61,6 +62,7 @@
     <div style="flex-shrink:0;">
       <form method="POST" action="{{ url_for('edit_gym_grades', gym_id=gym.id) }}" style="margin:0;"
             onsubmit="return confirm('Delete this grade?')">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="action" value="delete">
         <input type="hidden" name="grade_id" value="{{ g.id }}">
         <button type="submit" class="btn btn-secondary"
@@ -79,6 +81,7 @@
 <div class="card">
   <h2 style="margin-bottom:1rem;">Add Grade</h2>
   <form method="POST" action="{{ url_for('edit_gym_grades', gym_id=gym.id) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="action" value="add">
     <div style="display:grid; grid-template-columns: 1fr 1fr; gap:.75rem;">
       <div class="form-group" style="margin:0;">

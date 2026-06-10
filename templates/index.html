@@ -20,6 +20,7 @@
 {% if recent %}
 {% if is_admin %}
 <form id="bulk-form" method="POST" action="/bulk_delete_climbs">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <input type="hidden" name="next" value="/">
 {% endif %}
 <div class="card">

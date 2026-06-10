@@ -12,13 +12,44 @@
       {% else %}
         &middot; <span class="badge-active">In Progress</span>
       {% endif %}
+      {% if is_admin or current_climber %}
+      <span id="notes-display">
+        {% if session.notes %}&middot; {{ session.notes }}{% endif %}
+        <button type="button" onclick="toggleNotesEdit()"
+                style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:.85rem;padding:0 .2rem;line-height:1;"
+                title="Edit notes">✎</button>
+      </span>
+      <form id="notes-form" method="POST" action="/session/{{ session.id }}/update_notes"
+            style="display:none; margin-top:.4rem;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div style="display:flex; gap:.4rem; align-items:center;">
+          <input type="text" name="notes" value="{{ session.notes or '' }}"
+                 placeholder="Add session notes…" maxlength="500" autocomplete="off"
+                 style="flex:1; font-size:.82rem; padding:.3rem .5rem;">
+          <button type="submit" class="btn btn-primary" style="padding:.3rem .6rem; font-size:.8rem;">Save</button>
+          <button type="button" class="btn btn-secondary" onclick="toggleNotesEdit()" style="padding:.3rem .6rem; font-size:.8rem;">Cancel</button>
+        </div>
+      </form>
+      <script>
+        function toggleNotesEdit() {
+          const form = document.getElementById('notes-form');
+          const display = document.getElementById('notes-display');
+          const editing = form.style.display !== 'none';
+          form.style.display = editing ? 'none' : 'flex';
+          display.style.display = editing ? '' : 'none';
+          if (!editing) form.querySelector('input').focus();
+        }
+      </script>
+      {% else %}
       {% if session.notes %}&middot; {{ session.notes }}{% endif %}
+      {% endif %}
     </div>
   </div>
   <div style="display:flex; gap:.5rem; align-items:center; flex-wrap:wrap;">
     {% if not session.ended_at %}
     <a href="/log?session_id={{ session.id }}" class="btn btn-primary">+ Log Climb</a>
     <form method="POST" action="/end_session/{{ session.id }}" style="margin:0;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <button type="submit" class="btn btn-secondary">End Session</button>
     </form>
     {% endif %}
@@ -27,6 +58,7 @@
     <form method="POST" action="/delete_session/{{ session.id }}"
           onsubmit="return confirm('Delete this entire session and all its climbs? This cannot be undone.')"
           style="margin:0;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <button type="submit" class="btn btn-secondary"
               style="color:#ff8b82; border-color:rgba(231,76,60,.35);">Delete Session</button>
     </form>
@@ -55,6 +87,7 @@
 {% if climbs %}
 {% if is_admin %}
 <form id="bulk-form" method="POST" action="/bulk_delete_climbs">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <input type="hidden" name="next" value="/session/{{ session.id }}">
 {% endif %}
 <div class="card" style="margin-top:1.25rem;">

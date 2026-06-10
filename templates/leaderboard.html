@@ -16,7 +16,7 @@
 {% if rows %}
 <div class="lb-list">
   {% for row in rows %}
-  {% set rank = loop.index %}
+  {% set rank = loop.index + offset %}
   <div class="lb-card {% if rank == 1 %}rank-1{% elif rank == 2 %}rank-2{% elif rank == 3 %}rank-3{% endif %}">
 
     <div class="lb-rank">
@@ -58,6 +58,22 @@
   </div>
   {% endfor %}
 </div>
+
+{% if total_pages > 1 %}
+<div class="pagination">
+  {% if page > 1 %}
+  <a href="{{ url_for('leaderboard', sort=sort_by, page=page-1) }}" class="page-btn">&larr; Prev</a>
+  {% else %}
+  <span class="page-btn disabled">&larr; Prev</span>
+  {% endif %}
+  <span class="page-info">{{ page }} / {{ total_pages }}</span>
+  {% if page < total_pages %}
+  <a href="{{ url_for('leaderboard', sort=sort_by, page=page+1) }}" class="page-btn">Next &rarr;</a>
+  {% else %}
+  <span class="page-btn disabled">Next &rarr;</span>
+  {% endif %}
+</div>
+{% endif %}
 
 {% else %}
 <div class="card empty-state">

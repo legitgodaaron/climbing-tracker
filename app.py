@@ -1,15 +1,24 @@
 import os
 import json
+import logging
 import psycopg2
 from datetime import datetime, timedelta
 from psycopg2.extras import RealDictCursor
 from psycopg2 import pool as pg_pool
 from flask import Flask, render_template, request, redirect, url_for, session as flask_session, g, flash
+from flask_wtf.csrf import CSRFProtect
 from werkzeug.security import generate_password_hash, check_password_hash
 from dotenv import load_dotenv
 load_dotenv()
 
 app = Flask(__name__)
+csrf = CSRFProtect(app)
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s %(levelname)s %(name)s: %(message)s',
+)
+logger = logging.getLogger(__name__)
 _db_url = os.environ.get('DATABASE_URL', '')
 if not _db_url:
     raise RuntimeError("DATABASE_URL environment variable is not set.")
@@ -374,6 +383,7 @@ def inject_globals():
         approved_gyms = cur.fetchall()
         cur.close()
     except Exception:
+        logger.exception('inject_globals: failed to load nav data')
         all_users = []
         approved_gyms = []
     return {'is_admin': is_admin(), 'current_climber': current_climber, 'all_users': all_users, 'approved_gyms': approved_gyms}
@@ -760,11 +770,21 @@ def leaderboard():
     else:
         rows.sort(key=lambda x: x['total_points'], reverse=True)
 
+    LB_PER_PAGE = 10
+    page = max(1, request.args.get('page', 1, type=int) or 1)
+    total_pages = max(1, (len(rows) + LB_PER_PAGE - 1) // LB_PER_PAGE)
+    page = min(page, total_pages)
+    offset = (page - 1) * LB_PER_PAGE
+    rows = rows[offset:offset + LB_PER_PAGE]
+
     return render_template('leaderboard.html',
                            rows=rows,
                            grades=GRADE_COLORS,
                            grade_map=GRADE_MAP,
-                           sort_by=sort_by)
+                           sort_by=sort_by,
+                           page=page,
+                           total_pages=total_pages,
+                           offset=offset)
 
 
 # ── Admin routes ─────────────────────────────────────────────────────────────
@@ -1079,6 +1099,19 @@ def end_session(session_id):
     return redirect(url_for('session_detail', session_id=session_id))
 
 
+@app.route('/session/<int:session_id>/update_notes', methods=['POST'])
+def update_session_notes(session_id):
+    if not (is_admin() or flask_session.get('climber_id')):
+        return redirect(url_for('login'))
+    notes = request.form.get('notes', '').strip()[:500]
+    conn = get_db()
+    cur  = conn.cursor()
+    cur.execute('UPDATE sessions SET notes = %s WHERE id = %s', (notes, session_id))
+    conn.commit()
+    cur.close()
+    return redirect(url_for('session_detail', session_id=session_id))
+
+
 # ── Stats route ───────────────────────────────────────────────────────────────
 
 @app.route('/records')
@@ -1381,13 +1414,30 @@ def climber_profile(user_id):
         cur.close()
         return redirect(url_for('leaderboard'))
 
-    cur.execute('''
-        SELECT c.*, s.gym_name AS session_gym
-        FROM   climbs c
-        LEFT   JOIN sessions s ON c.session_id = s.id
-        WHERE  c.user_id = %s
-        ORDER  BY c.date ASC
-    ''', (user_id,))
+    period = request.args.get('period', 'all')
+    if period not in ('7d', '30d', '90d', 'all'):
+        period = 'all'
+    cutoff = None
+    if period != 'all':
+        days = {'7d': 7, '30d': 30, '90d': 90}[period]
+        cutoff = datetime.utcnow().date() - timedelta(days=days)
+
+    if cutoff:
+        cur.execute('''
+            SELECT c.*, s.gym_name AS session_gym
+            FROM   climbs c
+            LEFT   JOIN sessions s ON c.session_id = s.id
+            WHERE  c.user_id = %s AND c.date >= %s
+            ORDER  BY c.date ASC
+        ''', (user_id, cutoff))
+    else:
+        cur.execute('''
+            SELECT c.*, s.gym_name AS session_gym
+            FROM   climbs c
+            LEFT   JOIN sessions s ON c.session_id = s.id
+            WHERE  c.user_id = %s
+            ORDER  BY c.date ASC
+        ''', (user_id,))
     climbs = cur.fetchall()
 
     # Sessions this climber attended (with their personal totals)
@@ -1401,6 +1451,12 @@ def climber_profile(user_id):
         ORDER  BY s.started_at DESC
     ''', (user_id,))
     session_rows = cur.fetchall()
+    total_sessions = len(session_rows)
+    SESS_PER_PAGE = 6
+    sp = max(1, request.args.get('sp', 1, type=int) or 1)
+    session_pages = max(1, (len(session_rows) + SESS_PER_PAGE - 1) // SESS_PER_PAGE)
+    sp = min(sp, session_pages)
+    paged_sessions = session_rows[(sp - 1) * SESS_PER_PAGE : sp * SESS_PER_PAGE]
 
     # Competition results for this climber
     cur.execute('''
@@ -1468,10 +1524,48 @@ def climber_profile(user_id):
             if h in hold_counts:
                 hold_counts[h] += 1
 
+    # Chart data: weekly volume + grade progression
+    _weekly = {}
+    for c in climbs:
+        wk = c['date'] - timedelta(days=c['date'].weekday())
+        key = wk.strftime('%Y-%m-%d')
+        if key not in _weekly:
+            _weekly[key] = {'date': wk, 'climbs': []}
+        _weekly[key]['climbs'].append(c)
+
+    weekly_vol = {'labels': [], 'data': []}
+    grade_prog = {'labels': [], 'data': [], 'grade_labels': [], 'hex': []}
+    for key in sorted(_weekly):
+        bucket = _weekly[key]
+        lbl = '{} {}'.format(bucket['date'].strftime('%b'), bucket['date'].day)
+        wc  = bucket['climbs']
+        weekly_vol['labels'].append(lbl)
+        weekly_vol['data'].append(len(wc))
+        mx_idx, mx_lbl, mx_hex = -1, '', '#7c6cff'
+        for c in wc:
+            gc = c['grade_color']
+            if gc in grade_order:
+                i = grade_order.index(gc)
+                if i > mx_idx:
+                    mx_idx = i
+                    g_info = GRADE_MAP.get(gc, {})
+                    mx_lbl = g_info.get('label', gc)
+                    mx_hex = g_info.get('hex', '#7c6cff')
+        if mx_idx >= 0:
+            grade_prog['labels'].append(lbl)
+            grade_prog['data'].append(mx_idx)
+            grade_prog['grade_labels'].append(mx_lbl)
+            grade_prog['hex'].append(mx_hex)
+
     recent_climbs = [dict(c, item_type='climb') for c in climbs]
     recent_comp   = [dict(r, item_type='comp') for r in recent_comp_rows]
 
-    recent_activity = sorted(recent_climbs + recent_comp, key=lambda x: x['date'], reverse=True)[:15]
+    ACT_PER_PAGE = 15
+    page = max(1, request.args.get('page', 1, type=int) or 1)
+    all_activity = sorted(recent_climbs + recent_comp, key=lambda x: x['date'], reverse=True)
+    activity_pages = max(1, (len(all_activity) + ACT_PER_PAGE - 1) // ACT_PER_PAGE)
+    page = min(page, activity_pages)
+    recent_activity = all_activity[(page - 1) * ACT_PER_PAGE : page * ACT_PER_PAGE]
 
     return render_template('climber.html',
                            user=user,
@@ -1486,9 +1580,113 @@ def climber_profile(user_id):
                            style_counts=style_counts,
                            hold_counts=hold_counts,
                            recent_climbs=recent_activity,
-                           session_rows=session_rows,
+                           session_rows=paged_sessions,
+                           total_sessions=total_sessions,
+                           sp=sp,
+                           session_pages=session_pages,
+                           page=page,
+                           activity_pages=activity_pages,
                            comp_results=comp_results,
                            can_edit_climbs=can_manage_climb(user_id),
+                           grades=GRADE_COLORS,
+                           grade_map=GRADE_MAP,
+                           period=period,
+                           weekly_vol=weekly_vol,
+                           grade_prog=grade_prog)
+
+
+
+# ── My Climbs ────────────────────────────────────────────────────────────────
+
+@app.route('/my-climbs')
+def my_climbs():
+    user_id = flask_session.get('climber_id')
+    if not user_id and not is_admin():
+        return redirect(url_for('login', next='/my-climbs'))
+    if not user_id:
+        return redirect(url_for('login', next='/my-climbs'))
+
+    conn = get_db()
+    cur  = conn.cursor()
+
+    cur.execute('SELECT * FROM users WHERE id = %s', (user_id,))
+    user = cur.fetchone()
+    if not user:
+        cur.close()
+        return redirect(url_for('leaderboard'))
+
+    cur.execute('''
+        SELECT DISTINCT s.gym_name
+        FROM   sessions s
+        JOIN   climbs   c ON c.session_id = s.id
+        WHERE  c.user_id = %s
+        ORDER  BY s.gym_name
+    ''', (user_id,))
+    user_gyms = [r['gym_name'] for r in cur.fetchall()]
+
+    grade      = request.args.get('grade', '')
+    ctype      = request.args.get('type', '')
+    style      = request.args.get('style', '')
+    gym        = request.args.get('gym', '')
+    flash_only = request.args.get('flash', '') == '1'
+
+    conditions = ['c.user_id = %s']
+    params     = [user_id]
+
+    if grade and grade in GRADE_MAP:
+        conditions.append('c.grade_color = %s')
+        params.append(grade)
+    if ctype and ctype in VALID_TYPES:
+        conditions.append('c.climb_type = %s')
+        params.append(ctype)
+    if style and style in VALID_STYLES:
+        conditions.append('c.style = %s')
+        params.append(style)
+    if gym and gym in user_gyms:
+        conditions.append('s.gym_name = %s')
+        params.append(gym)
+    if flash_only:
+        conditions.append('c.flashed = TRUE')
+
+    where = 'WHERE ' + ' AND '.join(conditions)
+
+    cur.execute(f'''
+        SELECT COUNT(*)
+        FROM   climbs  c
+        LEFT   JOIN sessions s ON c.session_id = s.id
+        {where}
+    ''', params)
+    total = cur.fetchone()['count']
+
+    PER_PAGE    = 20
+    page        = max(1, request.args.get('page', 1, type=int) or 1)
+    total_pages = max(1, (total + PER_PAGE - 1) // PER_PAGE)
+    page        = min(page, total_pages)
+    offset      = (page - 1) * PER_PAGE
+
+    cur.execute(f'''
+        SELECT c.*, s.gym_name AS session_gym
+        FROM   climbs  c
+        LEFT   JOIN sessions s ON c.session_id = s.id
+        {where}
+        ORDER  BY c.date DESC, c.id DESC
+        LIMIT  %s OFFSET %s
+    ''', params + [PER_PAGE, offset])
+    climbs = cur.fetchall()
+    cur.close()
+
+    return render_template('my_climbs.html',
+                           user=user,
+                           climbs=climbs,
+                           total=total,
+                           page=page,
+                           total_pages=total_pages,
+                           user_gyms=user_gyms,
+                           grade=grade,
+                           ctype=ctype,
+                           style=style,
+                           gym=gym,
+                           flash_only=flash_only,
                            grades=GRADE_COLORS,
                            grade_map=GRADE_MAP)
 
@@ -1890,6 +2088,19 @@ def set_main_gym():
     flash('Main gym updated.', 'success')
     next_url = request.form.get('next', '') or url_for('index')
     return redirect(next_url)
+
+
+# ── Error handlers ────────────────────────────────────────────────────────────
+
+@app.errorhandler(404)
+def not_found(e):
+    return render_template('404.html'), 404
+
+
+@app.errorhandler(500)
+def server_error(e):
+    logger.exception('500 error')
+    return render_template('500.html'), 500
 
 
 # ── Startup ───────────────────────────────────────────────────────────────────

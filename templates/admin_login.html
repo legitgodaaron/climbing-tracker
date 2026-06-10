@@ -11,6 +11,7 @@
     {% endif %}
 
     <form method="POST" action="/admin/login">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="next" value="{{ next }}">
       <div class="form-group">
         <label class="field-label" for="apw">Password</label>

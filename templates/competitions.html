@@ -56,6 +56,7 @@
   <div class="modal-box">
     <h2>New Competition</h2>
     <form method="POST" action="/competitions/create">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div class="form-group">
         <label class="field-label" for="comp-name">Name</label>
         <input type="text" name="name" id="comp-name"

@@ -38,6 +38,7 @@
     <form method="POST" action="/delete_session/{{ s.id }}"
           onsubmit="return confirm('Delete this session and all its climbs? This cannot be undone.')"
           style="margin:0; flex-shrink:0;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <button type="submit" class="btn btn-secondary"
               style="color:#ff8b82; border-color:rgba(231,76,60,.35); padding:.45rem .75rem;" title="Delete session">&times;</button>
     </form>
@@ -62,6 +63,7 @@
   <div class="modal-box">
     <h2>Start a Session</h2>
     <form method="POST" action="/start_session">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div class="form-group">
         <label class="field-label" for="gym-select">Gym</label>
         <select name="gym_id" id="gym-select" required>

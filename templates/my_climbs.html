@@ -1,0 +1,142 @@
+{% extends "base.html" %}
+{% block title %}My Climbs — ClimbTracker{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <div>
+    <h1>My Climbs</h1>
+    <div style="color:var(--muted); font-size:.85rem; margin-top:.25rem;">
+      {{ total }} climb{{ 's' if total != 1 else '' }}
+      {%- if grade or ctype or style or gym or flash_only %} matching filters{% endif %}
+    </div>
+  </div>
+</div>
+
+<!-- ── Filters ── -->
+<form method="GET" action="{{ url_for('my_climbs') }}" class="filter-form">
+  <div class="filter-grid">
+    <select name="grade" onchange="this.form.submit()">
+      <option value="">All grades</option>
+      {% for g in grades %}
+      <option value="{{ g.key }}" {% if grade == g.key %}selected{% endif %}>{{ g.label }}</option>
+      {% endfor %}
+    </select>
+
+    <select name="type" onchange="this.form.submit()">
+      <option value="">All types</option>
+      <option value="overhang" {% if ctype == 'overhang' %}selected{% endif %}>Overhang</option>
+      <option value="neutral"  {% if ctype == 'neutral'  %}selected{% endif %}>Neutral</option>
+      <option value="slab"     {% if ctype == 'slab'     %}selected{% endif %}>Slab</option>
+    </select>
+
+    <select name="style" onchange="this.form.submit()">
+      <option value="">All styles</option>
+      <option value="static" {% if style == 'static' %}selected{% endif %}>Static</option>
+      <option value="dyno"   {% if style == 'dyno'   %}selected{% endif %}>Dyno</option>
+    </select>
+
+    {% if user_gyms | length > 1 %}
+    <select name="gym" onchange="this.form.submit()">
+      <option value="">All gyms</option>
+      {% for g in user_gyms %}
+      <option value="{{ g }}" {% if gym == g %}selected{% endif %}>{{ g }}</option>
+      {% endfor %}
+    </select>
+    {% endif %}
+
+    <label class="flash-toggle {% if flash_only %}active{% endif %}"
+           title="Flash only">
+      <input type="checkbox" name="flash" value="1"
+             {% if flash_only %}checked{% endif %}
+             onchange="this.form.submit()"
+             style="display:none;">
+      ⚡ Flash
+    </label>
+
+    {% if grade or ctype or style or gym or flash_only %}
+    <a href="{{ url_for('my_climbs') }}" class="btn btn-secondary" style="padding:.4rem .75rem; font-size:.82rem;">Clear</a>
+    {% endif %}
+  </div>
+</form>
+
+<!-- ── Results ── -->
+{% if climbs %}
+<div class="card" style="margin-top:1rem; padding:0 1.25rem;">
+  {% for c in climbs %}
+  {% set g = grade_map[c.grade_color] %}
+  <div class="feed-item">
+    <div class="feed-dot" style="background:{{ g.hex }};"></div>
+    <div class="feed-body">
+      <div class="feed-meta" style="margin-top:0;">
+        <span class="gbadge" style="background:{{ g.hex }}22; color:{{ g.hex }}; border-color:{{ g.hex }}44;">
+          <span class="gbadge-dot" style="background:{{ g.hex }};"></span>
+          {{ g.label }} &middot; {% if c.grade_color == 'white' and c.sub_grade %}{{ c.sub_grade | upper }}{% else %}{{ g.grade }}{% endif %}
+        </span>
+        &ensp;{{ c.climb_type | capitalize }}
+        &middot; {{ c.style | capitalize }}
+        &middot; {{ c.holds | from_json | join(', ') }}
+        {% if c.flashed %}&ensp;<span style="color:#FFD700; font-size:.85em;">⚡ Flash</span>
+        {% elif c.attempts > 1 %}&ensp;<span style="color:var(--muted); font-size:.82em;">{{ c.attempts }} tries</span>{% endif %}
+      </div>
+      <div style="color:var(--muted); font-size:.75rem; margin-top:.2rem;">
+        {{ c.date.strftime('%Y-%m-%d') }}{% if c.session_gym %} &middot; {{ c.session_gym }}{% endif %}
+      </div>
+    </div>
+    <div class="feed-pts">+{{ c.points }}&thinsp;pts</div>
+  </div>
+  {% endfor %}
+</div>
+
+{% if total_pages > 1 %}
+<div class="pagination">
+  {% if page > 1 %}
+  <a href="{{ url_for('my_climbs', grade=grade, type=ctype, style=style, gym=gym, flash='1' if flash_only else '', page=page-1) }}" class="page-btn">&larr; Prev</a>
+  {% else %}
+  <span class="page-btn disabled">&larr; Prev</span>
+  {% endif %}
+  <span class="page-info">{{ page }} / {{ total_pages }}</span>
+  {% if page < total_pages %}
+  <a href="{{ url_for('my_climbs', grade=grade, type=ctype, style=style, gym=gym, flash='1' if flash_only else '', page=page+1) }}" class="page-btn">Next &rarr;</a>
+  {% else %}
+  <span class="page-btn disabled">Next &rarr;</span>
+  {% endif %}
+</div>
+{% endif %}
+
+{% else %}
+<div class="card empty-state" style="margin-top:1rem;">
+  No climbs match your filters. <a href="{{ url_for('my_climbs') }}">Clear filters</a>
+</div>
+{% endif %}
+
+<style>
+  .filter-form { margin-bottom: .5rem; }
+  .filter-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .5rem;
+    align-items: center;
+  }
+  .filter-grid select {
+    flex: 1 1 120px;
+    font-size: .82rem;
+    padding: .4rem .6rem;
+    min-width: 0;
+  }
+  .flash-toggle {
+    display: inline-flex;
+    align-items: center;
+    padding: .4rem .75rem;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: .82rem;
+    color: var(--muted);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: border-color .15s, color .15s, background .15s;
+  }
+  .flash-toggle:hover { border-color: #FFD700; color: #FFD700; }
+  .flash-toggle.active { background: rgba(255,215,0,.12); border-color: #FFD700; color: #FFD700; }
+</style>
+
+{% endblock %}

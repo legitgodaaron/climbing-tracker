@@ -25,6 +25,7 @@
   {% endif %}
 
   <form method="POST" action="/log">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
     <!-- Session (optional) -->
     {% if active_sessions %}
