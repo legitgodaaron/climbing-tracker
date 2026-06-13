@@ -10,7 +10,7 @@
   <meta name="theme-color" content="#0d1018">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
   <meta name="apple-mobile-web-app-title" content="ClimbTracker">
   <link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/apple-touch-icon.png') }}">
   <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='icons/favicon-32.png') }}">
@@ -1267,6 +1267,14 @@ function bulkClear() {
     window.addEventListener('load', function () {
       navigator.serviceWorker.register('/sw.js').catch(function (err) {
         console.warn('SW registration failed:', err);
+      });
+      // When a new worker takes control (e.g. replacing an older one),
+      // reload once so the page is served by the up-to-date worker.
+      var refreshing = false;
+      navigator.serviceWorker.addEventListener('controllerchange', function () {
+        if (refreshing) return;
+        refreshing = true;
+        window.location.reload();
       });
     });
   }
