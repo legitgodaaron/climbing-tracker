@@ -24,7 +24,7 @@
   <div class="alert-error">{{ error }}</div>
   {% endif %}
 
-  <form method="POST" action="/log">
+  <form method="POST" action="/log" enctype="multipart/form-data">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
     <!-- Session (optional) -->
@@ -116,6 +116,18 @@
         </div>
         {% if field_errors.holds %}<div class="field-error">{{ field_errors.holds }}</div>{% endif %}
       </div>
+
+      {% if photos_enabled %}
+      <!-- Photo -->
+      <div class="form-group">
+        <label class="field-label" for="photo-input">Photo <span class="note">(optional)</span></label>
+        <label class="photo-drop" id="photo-drop">
+          <input type="file" name="photo" id="photo-input" accept="image/*" capture="environment" hidden>
+          <img id="photo-preview" alt="" hidden>
+          <span id="photo-prompt">📷 Add a photo of the send</span>
+        </label>
+      </div>
+      {% endif %}
     </div>
 
     <div style="display:flex; gap:.5rem; justify-content:space-between; align-items:center; padding-top:.5rem; flex-wrap:wrap;">
@@ -196,6 +208,52 @@
       }
     });
   }
+
+  // Photo preview (only present when uploads are enabled)
+  const photoInput = document.getElementById('photo-input');
+  if (photoInput) {
+    photoInput.addEventListener('change', () => {
+      const file = photoInput.files && photoInput.files[0];
+      const preview = document.getElementById('photo-preview');
+      const prompt  = document.getElementById('photo-prompt');
+      if (file) {
+        preview.src = URL.createObjectURL(file);
+        preview.hidden = false;
+        prompt.textContent = 'Change photo';
+      } else {
+        preview.hidden = true;
+        prompt.textContent = '📷 Add a photo of the send';
+      }
+    });
+  }
 </script>
+
+<style>
+  .photo-drop {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: .6rem;
+    min-height: 120px;
+    padding: 1rem;
+    border: 1.5px dashed var(--border);
+    border-radius: 10px;
+    background: var(--surf2);
+    color: var(--muted);
+    font-size: .9rem;
+    font-weight: 600;
+    cursor: pointer;
+    text-align: center;
+    transition: border-color .15s, color .15s;
+  }
+  .photo-drop:hover { border-color: var(--accent); color: var(--text); }
+  #photo-preview {
+    max-width: 100%;
+    max-height: 240px;
+    border-radius: 8px;
+    object-fit: cover;
+  }
+</style>
 
 {% endblock %}

@@ -25,7 +25,95 @@ if not _db_url:
 DATABASE_URL     = _db_url.replace('postgres://', 'postgresql://', 1)
 app.secret_key   = os.environ.get('SECRET_KEY', 'dev-secret-change-in-prod')
 app.permanent_session_lifetime = timedelta(days=30)
+app.config['MAX_CONTENT_LENGTH'] = 12 * 1024 * 1024  # cap request bodies (photo uploads)
 ADMIN_PASSWORD   = os.environ.get('ADMIN_PASSWORD', '')
+
+# ── Photo storage (Cloudflare R2 — S3-compatible) ──────────────────────────────
+# All of these must be set for photo uploads to be enabled. When any are missing
+# the upload UI is hidden and the app behaves exactly as before.
+R2_ACCOUNT_ID        = os.environ.get('R2_ACCOUNT_ID', '')
+R2_ACCESS_KEY_ID     = os.environ.get('R2_ACCESS_KEY_ID', '')
+R2_SECRET_ACCESS_KEY = os.environ.get('R2_SECRET_ACCESS_KEY', '')
+R2_BUCKET            = os.environ.get('R2_BUCKET', '')
+# Public base URL that serves the bucket (r2.dev domain or a custom domain),
+# e.g. https://pub-xxxx.r2.dev  or  https://photos.example.com
+R2_PUBLIC_URL        = os.environ.get('R2_PUBLIC_URL', '').rstrip('/')
+# Endpoint override; defaults to the standard R2 endpoint for the account.
+R2_ENDPOINT_URL      = os.environ.get('R2_ENDPOINT_URL', '') or (
+    f'https://{R2_ACCOUNT_ID}.r2.cloudflarestorage.com' if R2_ACCOUNT_ID else ''
+)
+
+PHOTOS_ENABLED = bool(
+    R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY and R2_BUCKET
+    and R2_PUBLIC_URL and R2_ENDPOINT_URL
+)
+
+ALLOWED_PHOTO_TYPES = {'image/jpeg', 'image/png', 'image/webp'}
+MAX_PHOTO_BYTES     = 12 * 1024 * 1024  # 12 MB upload ceiling
+MAX_PHOTO_DIM       = 1600              # longest edge after resize
+
+_r2_client = None
+
+
+def get_r2_client():
+    """Lazily build a boto3 S3 client pointed at Cloudflare R2."""
+    global _r2_client
+    if _r2_client is None:
+        import boto3
+        from botocore.config import Config
+        _r2_client = boto3.client(
+            's3',
+            endpoint_url=R2_ENDPOINT_URL,
+            aws_access_key_id=R2_ACCESS_KEY_ID,
+            aws_secret_access_key=R2_SECRET_ACCESS_KEY,
+            region_name='auto',
+            config=Config(signature_version='s3v4'),
+        )
+    return _r2_client
+
+
+def upload_climb_photo(file_storage):
+    """Process and upload a climb photo to R2; return its public URL or None.
+
+    Strips EXIF metadata (also normalising orientation), downsizes large images,
+    and re-encodes to JPEG. Returns None and logs on any failure so logging a
+    climb never fails because of a photo problem.
+    """
+    if not PHOTOS_ENABLED or file_storage is None or not file_storage.filename:
+        return None
+
+    import io
+    import uuid
+    from PIL import Image, ImageOps
+
+    try:
+        raw = file_storage.read(MAX_PHOTO_BYTES + 1)
+        if len(raw) > MAX_PHOTO_BYTES:
+            logger.warning('upload_climb_photo: file exceeds size limit')
+            return None
+        if file_storage.mimetype and file_storage.mimetype not in ALLOWED_PHOTO_TYPES:
+            logger.warning('upload_climb_photo: unsupported type %s', file_storage.mimetype)
+            return None
+
+        img = Image.open(io.BytesIO(raw))
+        img = ImageOps.exif_transpose(img)          # honour orientation, then drop EXIF
+        img = img.convert('RGB')
+        img.thumbnail((MAX_PHOTO_DIM, MAX_PHOTO_DIM))
+
+        buf = io.BytesIO()
+        img.save(buf, format='JPEG', quality=85, optimize=True)  # no exif passed = stripped
+        buf.seek(0)
+
+        key = f'climbs/{uuid.uuid4().hex}.jpg'
+        get_r2_client().upload_fileobj(
+            buf, R2_BUCKET, key,
+            ExtraArgs={'ContentType': 'image/jpeg', 'CacheControl': 'public, max-age=31536000'},
+        )
+        return f'{R2_PUBLIC_URL}/{key}'
+    except Exception:
+        logger.exception('upload_climb_photo: failed to process/upload photo')
+        return None
+
 
 # ── Grade definitions ──────────────────────────────────────────────────────────
 # Points use a progressive scale that meaningfully rewards harder sends.
@@ -303,6 +391,8 @@ def init_db():
         cur.execute('ALTER TABLE climbs ADD COLUMN gym_id INTEGER REFERENCES gyms(id)')
         conn.commit()
         cur.execute('UPDATE climbs SET gym_id = %s WHERE gym_id IS NULL', (alien_bloc_id,))
+    if 'photo_url' not in cols:
+        cur.execute('ALTER TABLE climbs ADD COLUMN photo_url TEXT')
     conn.commit()
 
     # ── Migrations: users ─────────────────────────────────────────────────────
@@ -401,7 +491,8 @@ def inject_globals():
         logger.exception('inject_globals: failed to load nav data')
         all_users = []
         approved_gyms = []
-    return {'is_admin': is_admin(), 'current_climber': current_climber, 'all_users': all_users, 'approved_gyms': approved_gyms}
+    return {'is_admin': is_admin(), 'current_climber': current_climber, 'all_users': all_users,
+            'approved_gyms': approved_gyms, 'photos_enabled': PHOTOS_ENABLED}
 
 
 # ── Template helpers ──────────────────────────────────────────────────────────
@@ -592,12 +683,14 @@ def log_climb():
             points = WHITE_SUBGRADE_MAP[sub_grade]['points']
         else:
             points = db_grade_map[grade]['points']
+        photo_url = upload_climb_photo(request.files.get('photo')) if PHOTOS_ENABLED else None
+
         conn = get_db()
         cur = conn.cursor()
         cur.execute(
-            'INSERT INTO climbs (user_id, session_id, gym_id, grade_color, sub_grade, climb_type, style, holds, points, flashed, attempts) '
-            'VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)',
-            (user_id, session_id, gym_id, grade, sub_grade or None, ctype, style, json.dumps(holds), points, flashed, attempts)
+            'INSERT INTO climbs (user_id, session_id, gym_id, grade_color, sub_grade, climb_type, style, holds, points, flashed, attempts, photo_url) '
+            'VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)',
+            (user_id, session_id, gym_id, grade, sub_grade or None, ctype, style, json.dumps(holds), points, flashed, attempts, photo_url)
         )
         conn.commit()
         cur.close()
