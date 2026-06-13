@@ -879,7 +879,14 @@
       .bottom-nav {
         display: flex;
         position: fixed;
+        /* Reset top/min-height/padding/gap leaking from the bare `nav` selector;
+           without top:auto the element is pinned top AND bottom -> full height,
+           covering the whole page. */
+        top: auto;
         bottom: 0; left: 0; right: 0;
+        min-height: 0;
+        padding: 0;
+        gap: 0;
         z-index: 90;
         background: var(--surface);
         border-top: 1px solid var(--border);
