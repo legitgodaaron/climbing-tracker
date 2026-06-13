@@ -43,56 +43,8 @@
     </div>
     {% endif %}
 
-    <!-- Gym picker -->
-    <div class="form-group">
-      <label class="field-label" for="sel-gym">Gym</label>
-      <select name="gym_id" id="sel-gym">
-        {% for gym in approved_gyms %}
-        <option value="{{ gym.id }}"
-          {% if form_data.gym_id == (gym.id|string) %}selected
-          {% elif not form_data.gym_id and gym.id == default_gym_id %}selected
-          {% endif %}>{{ gym.name }}</option>
-        {% endfor %}
-      </select>
-    </div>
-
-    <!-- Grade -->
-    <div class="form-group">
-      <label class="field-label">Grade <span class="note">(Tag Colour)</span></label>
-      {% for gym in approved_gyms %}
-      <div class="grade-grid gym-grade-set"
-           data-gym-id="{{ gym.id }}"
-           {% set is_default = (form_data.gym_id == (gym.id|string)) or (not form_data.gym_id and gym.id == default_gym_id) %}
-           style="{% if not is_default %}display:none{% endif %}">
-        {% for g in gym_grades_map[gym.id] %}
-        <label class="grade-card" style="background:{{ g.hex }}18; color:{{ g.text_color }};">
-          <input type="radio" name="grade_color" value="{{ g.key }}"
-                 {% if form_data.grade_color == g.key and is_default %}checked{% endif %}>
-          <div class="grade-dot" style="background:{{ g.hex }};"></div>
-          <span>{{ g.label }}</span>
-          <span style="opacity:.75;">{{ g.grade_range }}</span>
-          <span style="opacity:.65;">{{ g.points }}&thinsp;pts</span>
-        </label>
-        {% endfor %}
-      </div>
-      {% endfor %}
-      {% if field_errors.grade_color %}<div class="field-error">{{ field_errors.grade_color }}</div>{% endif %}
-    </div>
-
-    <!-- White V-grade picker -->
-    <div id="white-subgrade-wrap" class="form-group" {% if form_data.grade_color != 'white' %}hidden{% endif %}>
-      <label class="field-label">V-Grade <span class="note">(White tag)</span></label>
-      <div class="opt-grid" style="grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));">
-        {% for sg in white_subgrades %}
-        <label class="opt-card" style="text-align:center; flex-direction:column; gap:.15rem;">
-          <input type="radio" name="sub_grade" value="{{ sg.key }}" {% if form_data.sub_grade == sg.key %}checked{% endif %}>
-          <span style="font-weight:700;">{{ sg.label }}</span>
-          <span style="opacity:.6; font-size:.78em;">{{ sg.points }}&thinsp;pts</span>
-        </label>
-        {% endfor %}
-      </div>
-      {% if field_errors.sub_grade %}<div class="field-error">{{ field_errors.sub_grade }}</div>{% endif %}
-    </div>
+    {# Shared gym + grade + white-subgrade picker (also used by projects) #}
+    {% include '_grade_picker.html' %}
 
     <!-- Attempts + Flash -->
     <div class="two-col">
@@ -232,43 +184,7 @@
 
   syncFlash();
 
-  // Gym picker — switch grade grid on change
-  const gymSelect = document.getElementById('sel-gym');
-  const gradeSets = document.querySelectorAll('.gym-grade-set');
-  // Map gym_id → key of the grade that has subgrades (or null)
-  const gymSubgradesKey = {
-    {% for gym in approved_gyms %}
-    {{ gym.id }}: {% set sg_grade = gym_grades_map[gym.id] | selectattr('has_subgrades') | list %}{% if sg_grade %}'{{ sg_grade[0].key }}'{% else %}null{% endif %}{% if not loop.last %},{% endif %}
-
-    {% endfor %}
-  };
-
-  function switchGymGrades() {
-    const gid = parseInt(gymSelect.value, 10);
-    gradeSets.forEach(el => {
-      const matches = parseInt(el.dataset.gymId, 10) === gid;
-      el.style.display = matches ? '' : 'none';
-      if (!matches) {
-        // Deselect radio buttons for hidden gyms to avoid stale submissions
-        el.querySelectorAll('input[type="radio"]').forEach(r => r.checked = false);
-      }
-    });
-    updateSubgradeVisibility();
-  }
-
-  gymSelect.addEventListener('change', switchGymGrades);
-
-  // Sub-grade picker visibility — driven by has_subgrades key per gym
-  const subgradeWrap = document.getElementById('white-subgrade-wrap');
-  const gradeRadios = document.querySelectorAll('input[name="grade_color"]');
-  function updateSubgradeVisibility() {
-    const sel = document.querySelector('input[name="grade_color"]:checked');
-    const gid = parseInt(gymSelect.value, 10);
-    const subKey = gymSubgradesKey[gid];
-    subgradeWrap.hidden = !(sel && subKey && sel.value === subKey);
-  }
-  gradeRadios.forEach(r => r.addEventListener('change', updateSubgradeVisibility));
-  updateSubgradeVisibility();
+  // Gym + grade picker behaviour lives in the shared _grade_picker.html include.
 
   if (form) {
     form.addEventListener('submit', () => {

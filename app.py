@@ -252,6 +252,21 @@ def init_db():
             UNIQUE (user_id, competition_id, problem_number)
         )
     ''')
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS projects (
+            id          SERIAL PRIMARY KEY,
+            user_id     INTEGER NOT NULL REFERENCES users(id),
+            gym_id      INTEGER REFERENCES gyms(id),
+            grade_color TEXT    NOT NULL,
+            sub_grade   TEXT,
+            label       TEXT    NOT NULL DEFAULT '',
+            attempts    INTEGER NOT NULL DEFAULT 0,
+            is_sent     BOOLEAN NOT NULL DEFAULT FALSE,
+            climb_id    INTEGER REFERENCES climbs(id),
+            created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            sent_at     TIMESTAMP
+        )
+    ''')
     conn.commit()
 
     # ── Seed Alien Bloc gym ───────────────────────────────────────────────────
@@ -1704,6 +1719,186 @@ def my_climbs():
                            flash_only=flash_only,
                            grades=GRADE_COLORS,
                            grade_map=GRADE_MAP)
+
+
+# ── Projects ─────────────────────────────────────────────────────────────────
+
+def enrich_projects(rows):
+    """Attach grade display fields (hex, label, range/sub-grade) to project rows."""
+    grade_cache = {}
+    enriched = []
+    for row in rows:
+        p = dict(row)
+        gym_id = p.get('gym_id')
+        if gym_id not in grade_cache:
+            grade_cache[gym_id] = {g['key']: g for g in get_gym_grades(gym_id)} if gym_id else {}
+        gmap = grade_cache[gym_id]
+        grade = gmap.get(p['grade_color'])
+        p['grade_hex']   = grade['hex'] if grade else '#888888'
+        p['grade_label'] = grade['label'] if grade else p['grade_color'].title()
+        if p.get('sub_grade'):
+            p['display_grade'] = p['sub_grade'].upper()
+        else:
+            p['display_grade'] = grade['grade_range'] if grade else ''
+        enriched.append(p)
+    return enriched
+
+
+def project_points(gym_id, grade_color, sub_grade):
+    """Points a project send is worth, mirroring the log-climb calculation."""
+    db_grades = get_gym_grades(gym_id) if gym_id else []
+    db_grade_map = {g['key']: g for g in db_grades}
+    subgrades_key = next((g['key'] for g in db_grades if g['has_subgrades']), None)
+    if grade_color == subgrades_key and sub_grade in WHITE_SUBGRADE_MAP:
+        return WHITE_SUBGRADE_MAP[sub_grade]['points']
+    if grade_color in db_grade_map:
+        return db_grade_map[grade_color]['points']
+    return None
+
+
+def can_manage_project(owner_id):
+    return is_admin() or flask_session.get('climber_id') == owner_id
+
+
+@app.route('/projects')
+def projects():
+    user_id = flask_session.get('climber_id')
+    if not user_id:
+        return redirect(url_for('register', next=url_for('projects')))
+
+    conn = get_db()
+    cur  = conn.cursor()
+    cur.execute('''
+        SELECT p.*, gy.name AS gym_name
+        FROM   projects p
+        LEFT   JOIN gyms gy ON p.gym_id = gy.id
+        WHERE  p.user_id = %s AND p.is_sent = FALSE
+        ORDER  BY p.created_at DESC
+    ''', (user_id,))
+    active = enrich_projects(cur.fetchall())
+    cur.execute('''
+        SELECT p.*, gy.name AS gym_name
+        FROM   projects p
+        LEFT   JOIN gyms gy ON p.gym_id = gy.id
+        WHERE  p.user_id = %s AND p.is_sent = TRUE
+        ORDER  BY p.sent_at DESC NULLS LAST
+        LIMIT  10
+    ''', (user_id,))
+    sent = enrich_projects(cur.fetchall())
+    cur.close()
+
+    _all_gyms = get_approved_gyms()
+    gym_grades_map = {gym['id']: get_gym_grades(gym['id']) for gym in _all_gyms}
+    default_gym_id = flask_session.get('main_gym_id') or get_alien_bloc_id()
+    form_data = {'gym_id': '', 'grade_color': '', 'sub_grade': '', 'label': ''}
+
+    return render_template('projects.html',
+                           projects=active, sent_projects=sent,
+                           white_subgrades=WHITE_SUBGRADES,
+                           gym_grades_map=gym_grades_map,
+                           default_gym_id=default_gym_id,
+                           form_data=form_data,
+                           open_form=request.args.get('add') == '1')
+
+
+@app.route('/projects/add', methods=['POST'])
+def add_project():
+    user_id = flask_session.get('climber_id')
+    if not user_id:
+        return redirect(url_for('register', next=url_for('projects')))
+
+    label = request.form.get('label', '').strip()[:60]
+    grade = request.form.get('grade_color', '').strip()
+    sub_grade = request.form.get('sub_grade', '').strip()
+    try:
+        gym_id = int(request.form.get('gym_id', '').strip())
+    except (ValueError, TypeError):
+        gym_id = None
+
+    db_grades = get_gym_grades(gym_id) if gym_id else []
+    db_grade_map = {g['key']: g for g in db_grades}
+    subgrades_key = next((g['key'] for g in db_grades if g['has_subgrades']), None)
+
+    if not db_grade_map:
+        flash('Please choose a valid gym.', 'error')
+    elif grade not in db_grade_map:
+        flash('Please choose a grade for your project.', 'error')
+    elif grade == subgrades_key and sub_grade not in VALID_WHITE_SUBGRADES:
+        flash('Please choose a V-grade for the top grade.', 'error')
+    else:
+        conn = get_db()
+        cur  = conn.cursor()
+        cur.execute(
+            'INSERT INTO projects (user_id, gym_id, grade_color, sub_grade, label) '
+            'VALUES (%s,%s,%s,%s,%s)',
+            (user_id, gym_id, grade, sub_grade or None, label)
+        )
+        conn.commit()
+        cur.close()
+        flash('Project added. Go crush it! 🧗', 'success')
+        return redirect(url_for('projects'))
+
+    return redirect(url_for('projects', add=1))
+
+
+@app.route('/projects/<int:project_id>/attempt', methods=['POST'])
+def project_attempt(project_id):
+    conn = get_db()
+    cur  = conn.cursor()
+    cur.execute('SELECT user_id, is_sent FROM projects WHERE id = %s', (project_id,))
+    row = cur.fetchone()
+    if row and not row['is_sent'] and can_manage_project(row['user_id']):
+        cur.execute('UPDATE projects SET attempts = attempts + 1 WHERE id = %s', (project_id,))
+        conn.commit()
+    cur.close()
+    return redirect(url_for('projects'))
+
+
+@app.route('/projects/<int:project_id>/send', methods=['POST'])
+def project_send(project_id):
+    conn = get_db()
+    cur  = conn.cursor()
+    cur.execute('SELECT * FROM projects WHERE id = %s', (project_id,))
+    proj = cur.fetchone()
+    if not proj or proj['is_sent'] or not can_manage_project(proj['user_id']):
+        cur.close()
+        return redirect(url_for('projects'))
+
+    points = project_points(proj['gym_id'], proj['grade_color'], proj['sub_grade'])
+    if points is None:
+        cur.close()
+        flash('Could not log this project — its grade is no longer valid.', 'error')
+        return redirect(url_for('projects'))
+
+    attempts = max(1, proj['attempts'])
+    cur.execute(
+        'INSERT INTO climbs (user_id, session_id, gym_id, grade_color, sub_grade, climb_type, style, holds, points, flashed, attempts) '
+        'VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id',
+        (proj['user_id'], None, proj['gym_id'], proj['grade_color'], proj['sub_grade'] or None,
+         '', '', json.dumps([]), points, 0, attempts)
+    )
+    climb_id = cur.fetchone()['id']
+    cur.execute(
+        'UPDATE projects SET is_sent = TRUE, sent_at = CURRENT_TIMESTAMP, climb_id = %s WHERE id = %s',
+        (climb_id, project_id)
+    )
+    conn.commit()
+    cur.close()
+    flash(f'Sent! Logged for +{points} pts. 🎉', 'success')
+    return redirect(url_for('projects'))
+
+
+@app.route('/projects/<int:project_id>/delete', methods=['POST'])
+def project_delete(project_id):
+    conn = get_db()
+    cur  = conn.cursor()
+    cur.execute('SELECT user_id FROM projects WHERE id = %s', (project_id,))
+    row = cur.fetchone()
+    if row and can_manage_project(row['user_id']):
+        cur.execute('DELETE FROM projects WHERE id = %s', (project_id,))
+        conn.commit()
+    cur.close()
+    return redirect(url_for('projects'))
 
 
 # ── Competition routes ───────────────────────────────────────────────────────
