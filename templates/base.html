@@ -10,7 +10,7 @@
   <meta name="theme-color" content="#0d1018">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
   <meta name="apple-mobile-web-app-title" content="ClimbTracker">
   <link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/apple-touch-icon.png') }}">
   <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='icons/favicon-32.png') }}">
@@ -67,7 +67,6 @@
       position: sticky;
       top: 0;
       z-index: 50;
-      backdrop-filter: blur(12px);
     }
 
     .nav-brand {
@@ -885,7 +884,6 @@
         background: var(--surface);
         border-top: 1px solid var(--border);
         padding-bottom: env(safe-area-inset-bottom);
-        backdrop-filter: blur(12px);
       }
       .bottom-nav a, .bottom-nav button {
         flex: 1;
@@ -1014,6 +1012,9 @@ function bulkClear() {
     <a href="/log"         class="nav-link {% if request.endpoint == 'log_climb'  %}active{% endif %}">Log Climb</a>
     <a href="/leaderboard" class="nav-link {% if request.endpoint == 'leaderboard'%}active{% endif %}">Leaderboard</a>
     <a href="/sessions"    class="nav-link {% if request.endpoint in ('sessions','session_detail') %}active{% endif %}">Sessions</a>
+    {% if current_climber %}
+    <a href="/projects"    class="nav-link {% if request.endpoint == 'projects' %}active{% endif %}">Projects</a>
+    {% endif %}
     <a href="/competitions" class="nav-link {% if request.endpoint in ('competitions','competition_detail','log_comp_send') %}active{% endif %}">Comps</a>
     <a href="/gyms"         class="nav-link {% if request.endpoint in ('gyms','request_gym') %}active{% endif %}">Gyms</a>
     {% if current_climber %}
@@ -1146,6 +1147,7 @@ function bulkClear() {
     <a href="/competitions" class="drawer-link {% if request.endpoint in ('competitions','competition_detail','log_comp_send') %}active{% endif %}"><span class="dl-icon">🥇</span> Competitions</a>
     <a href="/gyms"         class="drawer-link {% if request.endpoint in ('gyms','request_gym') %}active{% endif %}"><span class="dl-icon">🏋️</span> Gyms</a>
     {% if current_climber %}
+    <a href="{{ url_for('projects') }}" class="drawer-link {% if request.endpoint == 'projects' %}active{% endif %}"><span class="dl-icon">🧗</span> Projects</a>
     <a href="/climber/{{ current_climber.id }}" class="drawer-link {% if request.endpoint == 'climber_profile' %}active{% endif %}"><span class="dl-icon">👤</span> My Profile</a>
     <a href="{{ url_for('my_climbs') }}" class="drawer-link {% if request.endpoint == 'my_climbs' %}active{% endif %}"><span class="dl-icon">🔍</span> My Climbs</a>
     <a href="{{ url_for('climber_achievements', user_id=current_climber.id) }}" class="drawer-link {% if request.endpoint == 'climber_achievements' %}active{% endif %}"><span class="dl-icon">🏅</span> My Achievements</a>
@@ -1263,6 +1265,14 @@ function bulkClear() {
     window.addEventListener('load', function () {
       navigator.serviceWorker.register('/sw.js').catch(function (err) {
         console.warn('SW registration failed:', err);
+      });
+      // When a new worker takes control (e.g. replacing an older one),
+      // reload once so the page is served by the up-to-date worker.
+      var refreshing = false;
+      navigator.serviceWorker.addEventListener('controllerchange', function () {
+        if (refreshing) return;
+        refreshing = true;
+        window.location.reload();
       });
     });
   }

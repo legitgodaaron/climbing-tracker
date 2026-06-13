@@ -1,11 +1,14 @@
-/* ClimbTracker service worker — offline shell + static caching */
-const VERSION    = 'climbtracker-v1';
+/* ClimbTracker service worker — conservative: caches static assets only.
+   It deliberately does NOT intercept page navigations. Intercepting
+   navigations on iOS standalone PWAs is a well-known source of blank
+   pages / "dead" links, so we let the browser handle all navigation
+   normally and only speed up same-origin static assets. */
+const VERSION      = 'climbtracker-v2';
 const STATIC_CACHE = `${VERSION}-static`;
-const OFFLINE_URL  = '/offline';
 
-// App shell / static assets cached up front so the app launches offline.
+// Static assets worth precaching. Each is added individually so one bad
+// URL can never fail the whole install (and brick the worker).
 const PRECACHE = [
-  OFFLINE_URL,
   '/static/manifest.webmanifest',
   '/static/icons/icon-192.png',
   '/static/icons/icon-512.png',
@@ -15,9 +18,9 @@ const PRECACHE = [
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(STATIC_CACHE)
-      .then((cache) => cache.addAll(PRECACHE))
-      .then(() => self.skipWaiting())
+    caches.open(STATIC_CACHE).then((cache) =>
+      Promise.all(PRECACHE.map((url) => cache.add(url).catch(() => null)))
+    ).then(() => self.skipWaiting())
   );
 });
 
@@ -33,31 +36,21 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   const { request } = event;
-
-  // Only handle GET; let the browser deal with POST/PUT/etc.
   if (request.method !== 'GET') return;
 
   const url = new URL(request.url);
-  // Don't touch cross-origin requests (e.g. R2 photo URLs, CDNs).
+
+  // Never touch navigations or cross-origin requests — let the network handle them.
+  if (request.mode === 'navigate') return;
   if (url.origin !== self.location.origin) return;
 
-  // Navigations (HTML pages): network-first, fall back to offline shell.
-  if (request.mode === 'navigate') {
-    event.respondWith(
-      fetch(request).catch(() =>
-        caches.match(request).then((cached) => cached || caches.match(OFFLINE_URL))
-      )
-    );
-    return;
-  }
-
-  // Static assets: cache-first, then network (and cache the result).
+  // Only same-origin static assets: cache-first, then network (and cache it).
   if (url.pathname.startsWith('/static/')) {
     event.respondWith(
       caches.match(request).then((cached) => {
         if (cached) return cached;
         return fetch(request).then((response) => {
-          if (response.ok) {
+          if (response && response.ok) {
             const copy = response.clone();
             caches.open(STATIC_CACHE).then((cache) => cache.put(request, copy));
           }

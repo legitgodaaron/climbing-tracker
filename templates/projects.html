@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% block title %}Projects — ClimbTracker{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <div>
+    <h1>🧗 Projects</h1>
+    <div style="color:var(--muted); font-size:.85rem; margin-top:.25rem;">
+      Problems you're working on. Log a try, then send it when you top out.
+    </div>
+  </div>
+</div>
+
+<!-- ── Add a project ── -->
+<details class="card" id="add-project" {% if open_form %}open{% endif %} style="margin-bottom:1.25rem;">
+  <summary style="cursor:pointer; font-weight:700; list-style:none;">+ Add a project</summary>
+  <form method="POST" action="{{ url_for('add_project') }}" style="margin-top:1rem;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <div class="form-group">
+      <label class="field-label" for="proj-label">Label <span class="note">(optional)</span></label>
+      <input type="text" name="label" id="proj-label" maxlength="60"
+             placeholder="e.g. Blue crimpy roof" value="{{ form_data.label or '' }}">
+    </div>
+
+    {# Shared gym + grade + white-subgrade picker #}
+    {% include '_grade_picker.html' %}
+
+    <div style="display:flex; gap:.5rem; justify-content:flex-end; padding-top:.25rem;">
+      <button type="submit" class="btn btn-primary">Add Project</button>
+    </div>
+  </form>
+</details>
+
+<!-- ── Active projects ── -->
+{% if projects %}
+<div class="lb-list">
+  {% for p in projects %}
+  <div class="card" style="display:flex; align-items:center; gap:1rem; flex-wrap:wrap;">
+    <div class="feed-dot" style="background:{{ p.grade_hex }}; width:14px; height:14px; flex-shrink:0;"></div>
+    <div style="flex:1; min-width:0;">
+      <div style="font-weight:700; font-size:1rem;">
+        {{ p.label or p.grade_label }}
+      </div>
+      <div class="feed-meta" style="margin-top:.25rem;">
+        <span class="gbadge" style="background:{{ p.grade_hex }}22; color:{{ p.grade_hex }}; border-color:{{ p.grade_hex }}44;">
+          <span class="gbadge-dot" style="background:{{ p.grade_hex }};"></span>
+          {{ p.grade_label }} &middot; {{ p.display_grade }}
+        </span>
+        {% if p.gym_name %}&ensp;<span style="color:var(--accent); opacity:.7;">&#9673; {{ p.gym_name }}</span>{% endif %}
+        &ensp;<span style="color:var(--muted);">{{ p.attempts }} {{ 'try' if p.attempts == 1 else 'tries' }}</span>
+      </div>
+    </div>
+    <div style="display:flex; gap:.4rem; align-items:center; flex-shrink:0;">
+      <form method="POST" action="{{ url_for('project_attempt', project_id=p.id) }}" data-no-loading style="margin:0;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn btn-secondary" title="Add a try">+1 try</button>
+      </form>
+      <form method="POST" action="{{ url_for('project_send', project_id=p.id) }}" style="margin:0;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn btn-primary" title="Mark as sent (logs the climb)">Send it ✓</button>
+      </form>
+      <form method="POST" action="{{ url_for('project_delete', project_id=p.id) }}" style="margin:0;"
+            onsubmit="return confirm('Delete this project?');">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn btn-secondary"
+                style="color:#ff8b82; border-color:rgba(231,76,60,.35); padding:.5rem .65rem;"
+                title="Delete project" aria-label="Delete project">✕</button>
+      </form>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="card empty-state">
+  No active projects. Add one above to start tracking your attempts!
+</div>
+{% endif %}
+
+<!-- ── Recently sent ── -->
+{% if sent_projects %}
+<h2 class="section-heading" style="margin-top:1.75rem;">Recently Sent</h2>
+<div class="lb-list">
+  {% for p in sent_projects %}
+  <div class="card" style="display:flex; align-items:center; gap:1rem; opacity:.7;">
+    <div class="feed-dot" style="background:{{ p.grade_hex }}; width:14px; height:14px; flex-shrink:0;"></div>
+    <div style="flex:1; min-width:0;">
+      <div style="font-weight:700;">{{ p.label or p.grade_label }} <span style="color:var(--success);">✓ Sent</span></div>
+      <div class="feed-meta" style="margin-top:.2rem;">
+        <span class="gbadge" style="background:{{ p.grade_hex }}22; color:{{ p.grade_hex }}; border-color:{{ p.grade_hex }}44;">
+          <span class="gbadge-dot" style="background:{{ p.grade_hex }};"></span>
+          {{ p.grade_label }} &middot; {{ p.display_grade }}
+        </span>
+        &ensp;<span style="color:var(--muted);">sent in {{ p.attempts }} {{ 'try' if p.attempts == 1 else 'tries' }}</span>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<style>
+  #add-project summary::-webkit-details-marker { display: none; }
+  #add-project[open] summary { margin-bottom: .25rem; }
+</style>
+
+{% endblock %}

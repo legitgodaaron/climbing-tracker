@@ -64,6 +64,11 @@
         {% if c.flashed %}&ensp;<span style="color:#FFD700; font-size:.85em;" title="Flashed!">⚡ Flash</span>{% elif c.attempts > 1 %}&ensp;<span style="color:var(--muted); font-size:.82em;">{{ c.attempts }} tries</span>{% endif %}
         {% if c.session_gym %}&ensp;<span style="color:var(--accent); opacity:.7;">&#9673; {{ c.session_gym }}</span>{% endif %}
       </div>
+      {% if c.photo_url %}
+      <button type="button" class="feed-photo" onclick="openLightbox('{{ c.photo_url }}')" aria-label="View climb photo">
+        <img src="{{ c.photo_url }}" alt="Climb photo" loading="lazy">
+      </button>
+      {% endif %}
     </div>
     <div class="feed-pts">+{{ c.points }}&thinsp;pts</div>
     {% endif %}
@@ -89,5 +94,48 @@
   No climbs logged yet. <a href="/log">Log the first one!</a>
 </div>
 {% endif %}
+
+<!-- Photo lightbox -->
+<div class="overlay" id="lightbox" onclick="closeLightbox()">
+  <img id="lightbox-img" src="" alt="Climb photo"
+       style="max-width:92vw; max-height:88vh; border-radius:12px;" onclick="event.stopPropagation()">
+</div>
+
+<style>
+  .feed-photo {
+    display: block;
+    margin-top: .55rem;
+    padding: 0;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: none;
+    cursor: pointer;
+    overflow: hidden;
+    line-height: 0;
+  }
+  .feed-photo img {
+    width: 100%;
+    max-width: 220px;
+    max-height: 160px;
+    object-fit: cover;
+    display: block;
+  }
+</style>
+
+<script>
+  function openLightbox(src) {
+    var box = document.getElementById('lightbox');
+    document.getElementById('lightbox-img').src = src;
+    box.classList.add('open');
+    document.body.style.overflow = 'hidden';
+  }
+  function closeLightbox() {
+    document.getElementById('lightbox').classList.remove('open');
+    document.body.style.overflow = '';
+  }
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') closeLightbox();
+  });
+</script>
 
 {% endblock %}
