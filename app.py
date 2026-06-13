@@ -5,7 +5,7 @@ import psycopg2
 from datetime import datetime, timedelta
 from psycopg2.extras import RealDictCursor
 from psycopg2 import pool as pg_pool
-from flask import Flask, render_template, request, redirect, url_for, session as flask_session, g, flash
+from flask import Flask, render_template, request, redirect, url_for, session as flask_session, g, flash, send_from_directory, make_response
 from flask_wtf.csrf import CSRFProtect
 from werkzeug.security import generate_password_hash, check_password_hash
 from dotenv import load_dotenv
@@ -428,6 +428,21 @@ def index():
     cur.close()
     recent = sorted(recent_climbs + recent_comp, key=lambda x: x['date'], reverse=True)[:20]
     return render_template('index.html', users=users, recent=recent, grade_map=GRADE_MAP)
+
+
+@app.route('/sw.js')
+def service_worker():
+    # Served from the root so the worker can control the whole origin (scope '/').
+    response = make_response(send_from_directory(app.static_folder, 'sw.js'))
+    response.headers['Content-Type'] = 'application/javascript'
+    response.headers['Service-Worker-Allowed'] = '/'
+    response.headers['Cache-Control'] = 'no-cache'
+    return response
+
+
+@app.route('/offline')
+def offline():
+    return render_template('offline.html')
 
 
 @app.route('/add_user', methods=['POST'])
