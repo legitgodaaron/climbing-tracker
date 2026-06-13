@@ -873,6 +873,119 @@
     .page-btn:hover { border-color: var(--accent); color: var(--accent); }
     .page-btn.disabled { color: var(--muted); opacity: .4; pointer-events: none; }
     .page-info { font-size: .85rem; color: var(--muted); white-space: nowrap; }
+
+    /* ── Bottom tab bar (mobile) ─────────────────────────────── */
+    .bottom-nav { display: none; }
+    @media (max-width: 700px) {
+      .bottom-nav {
+        display: flex;
+        position: fixed;
+        bottom: 0; left: 0; right: 0;
+        z-index: 90;
+        background: var(--surface);
+        border-top: 1px solid var(--border);
+        padding-bottom: env(safe-area-inset-bottom);
+        backdrop-filter: blur(12px);
+      }
+      .bottom-nav a, .bottom-nav button {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 3px;
+        background: none;
+        border: none;
+        cursor: pointer;
+        color: var(--muted);
+        text-decoration: none;
+        font-size: 0.64rem;
+        font-weight: 600;
+        padding: 0.4rem 0.2rem 0.45rem;
+        min-height: 56px;
+        font-family: inherit;
+      }
+      .bottom-nav .bn-icon { font-size: 1.25rem; line-height: 1; }
+      .bottom-nav a.active { color: var(--accent); }
+      /* Center Log action — raised accent button */
+      .bottom-nav .bn-log { color: var(--text); justify-content: center; }
+      .bottom-nav .bn-log .bn-icon {
+        width: 46px; height: 46px;
+        border-radius: 50%;
+        background: var(--accent);
+        color: #fff;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 1.6rem;
+        margin-top: -1.5rem;
+        margin-bottom: 2px;
+        box-shadow: 0 4px 14px rgba(124,140,255,0.45);
+        border: 3px solid var(--bg);
+      }
+      /* Clear space so content isn't hidden behind the bar */
+      main { padding-bottom: calc(56px + env(safe-area-inset-bottom) + 1rem); }
+      /* The top centered mobile Log button is redundant once the bar exists */
+      .nav-mobile-log { display: none !important; }
+      /* The bottom bar's "More" replaces the top hamburger; keep the avatar */
+      .nav-hamburger { display: none !important; }
+      /* Bulk-delete bar floats above the bottom nav */
+      .bulk-bar { bottom: calc(56px + env(safe-area-inset-bottom) + 0.6rem); }
+    }
+
+    /* ── Toasts ──────────────────────────────────────────────── */
+    .toast-stack {
+      position: fixed;
+      top: 1rem; right: 1rem;
+      z-index: 300;
+      display: flex;
+      flex-direction: column;
+      gap: 0.6rem;
+      max-width: min(360px, calc(100vw - 2rem));
+      pointer-events: none;
+    }
+    .toast {
+      pointer-events: auto;
+      display: flex;
+      align-items: flex-start;
+      gap: 0.55rem;
+      padding: 0.8rem 1rem;
+      border-radius: 10px;
+      font-size: 0.9rem;
+      font-weight: 500;
+      box-shadow: 0 8px 28px rgba(0,0,0,0.35);
+      border: 1px solid var(--border);
+      background: var(--surf2);
+      color: var(--text);
+      cursor: pointer;
+      animation: toast-in 0.25s ease;
+    }
+    .toast-success { border-color: var(--success-border); background: var(--success-bg); color: var(--success); }
+    .toast-error   { border-color: var(--danger-border);  background: var(--danger-bg);  color: var(--danger); }
+    .toast.hide { animation: toast-out 0.25s ease forwards; }
+    @keyframes toast-in  { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
+    @keyframes toast-out { to { opacity: 0; transform: translateY(-8px); } }
+    @media (max-width: 700px) {
+      .toast-stack {
+        top: auto;
+        bottom: calc(56px + env(safe-area-inset-bottom) + 0.75rem);
+        left: 0.75rem; right: 0.75rem;
+        max-width: none;
+      }
+    }
+
+    /* ── Button loading state ────────────────────────────────── */
+    .btn.is-loading { position: relative; color: transparent !important; pointer-events: none; }
+    .btn.is-loading::after {
+      content: '';
+      position: absolute;
+      width: 1rem; height: 1rem;
+      top: 50%; left: 50%;
+      margin: -0.5rem 0 0 -0.5rem;
+      border: 2px solid rgba(255,255,255,0.45);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: btn-spin 0.6s linear infinite;
+    }
+    @keyframes btn-spin { to { transform: rotate(360deg); } }
   </style>
 </head>
 <body>
@@ -1076,18 +1189,73 @@ function bulkClear() {
   })();
   </script>
 
-  <main>
-    {% with flashes = get_flashed_messages(with_categories=true) %}
-    {% if flashes %}
-    <div class="flash-stack">
-      {% for category, message in flashes %}
-      <div class="{% if category == 'success' %}alert-success{% else %}alert-error{% endif %}">{{ message }}</div>
-      {% endfor %}
+  <!-- Toast notifications (auto-dismissing flash messages) -->
+  {% with flashes = get_flashed_messages(with_categories=true) %}
+  {% if flashes %}
+  <div class="toast-stack" id="toast-stack" aria-live="polite">
+    {% for category, message in flashes %}
+    <div class="toast {% if category == 'success' %}toast-success{% else %}toast-error{% endif %}" role="status">
+      <span style="flex-shrink:0;">{% if category == 'success' %}✓{% else %}⚠️{% endif %}</span>
+      <span style="flex:1;">{{ message }}</span>
     </div>
-    {% endif %}
-    {% endwith %}
+    {% endfor %}
+  </div>
+  {% endif %}
+  {% endwith %}
+
+  <main>
     {% block content %}{% endblock %}
   </main>
+
+  <!-- Bottom tab bar (mobile only) -->
+  <nav class="bottom-nav" aria-label="Primary">
+    <a href="/" class="{% if request.endpoint == 'index' %}active{% endif %}">
+      <span class="bn-icon">🏠</span><span>Home</span>
+    </a>
+    <a href="/leaderboard" class="{% if request.endpoint == 'leaderboard' %}active{% endif %}">
+      <span class="bn-icon">🏆</span><span>Ranks</span>
+    </a>
+    <a href="/log" class="bn-log" aria-label="Log a climb">
+      <span class="bn-icon">＋</span><span>Log</span>
+    </a>
+    <a href="/sessions" class="{% if request.endpoint in ('sessions','session_detail') %}active{% endif %}">
+      <span class="bn-icon">📋</span><span>Sessions</span>
+    </a>
+    <button type="button" onclick="openDrawer()" aria-label="More">
+      <span class="bn-icon">☰</span><span>More</span>
+    </button>
+  </nav>
+
+  <!-- ── Toasts + submit loading state ───────────────────────── -->
+  <script>
+  // Auto-dismiss toasts; tap to dismiss early.
+  (function () {
+    var stack = document.getElementById('toast-stack');
+    if (!stack) return;
+    [].forEach.call(stack.querySelectorAll('.toast'), function (toast, i) {
+      function dismiss() {
+        if (toast.classList.contains('hide')) return;
+        toast.classList.add('hide');
+        setTimeout(function () { toast.remove(); }, 260);
+      }
+      toast.addEventListener('click', dismiss);
+      setTimeout(dismiss, 4000 + i * 400);
+    });
+  })();
+
+  // Show a loading spinner on submit buttons to prevent double-submits.
+  document.addEventListener('submit', function (e) {
+    var form = e.target;
+    if (form.dataset.noLoading !== undefined) return;
+    if (form.dataset.submitting) { e.preventDefault(); return; }
+    var btn = form.querySelector('button[type="submit"], input[type="submit"]');
+    if (btn && btn.classList.contains('btn')) {
+      form.dataset.submitting = '1';
+      // Add the spinner after the browser has serialised the form data.
+      setTimeout(function () { btn.classList.add('is-loading'); }, 0);
+    }
+  });
+  </script>
 
   <!-- ── Service worker registration ─────────────────────────── -->
   <script>
