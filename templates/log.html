@@ -71,6 +71,18 @@
       </div>
     </div>
 
+    {% if photos_enabled %}
+    <!-- Photo (always visible) -->
+    <div class="form-group">
+      <label class="field-label" for="photo-input">Photo <span class="note">(optional)</span></label>
+      <label class="photo-drop" id="photo-drop">
+        <input type="file" name="photo" id="photo-input" accept="image/*" capture="environment" hidden>
+        <img id="photo-preview" alt="" hidden>
+        <span id="photo-prompt">📷 Add a photo of the send</span>
+      </label>
+    </div>
+    {% endif %}
+
     <div id="extra-details" hidden>
       <!-- Type + Style side by side -->
       <div class="two-col">
@@ -116,18 +128,6 @@
         </div>
         {% if field_errors.holds %}<div class="field-error">{{ field_errors.holds }}</div>{% endif %}
       </div>
-
-      {% if photos_enabled %}
-      <!-- Photo -->
-      <div class="form-group">
-        <label class="field-label" for="photo-input">Photo <span class="note">(optional)</span></label>
-        <label class="photo-drop" id="photo-drop">
-          <input type="file" name="photo" id="photo-input" accept="image/*" capture="environment" hidden>
-          <img id="photo-preview" alt="" hidden>
-          <span id="photo-prompt">📷 Add a photo of the send</span>
-        </label>
-      </div>
-      {% endif %}
     </div>
 
     <div style="display:flex; gap:.5rem; justify-content:space-between; align-items:center; padding-top:.5rem; flex-wrap:wrap;">
