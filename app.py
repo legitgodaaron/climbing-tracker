@@ -551,6 +551,20 @@ def offline():
     return render_template('offline.html')
 
 
+@app.route('/healthz/photos')
+def healthz_photos():
+    # Diagnostic only — reports which R2 vars the app sees (booleans, never values).
+    return {
+        'photos_enabled': PHOTOS_ENABLED,
+        'have_access_key_id': bool(R2_ACCESS_KEY_ID),
+        'have_secret_access_key': bool(R2_SECRET_ACCESS_KEY),
+        'have_bucket': bool(R2_BUCKET),
+        'have_public_url': bool(R2_PUBLIC_URL),
+        'have_endpoint_url': bool(R2_ENDPOINT_URL),
+        'have_account_id': bool(R2_ACCOUNT_ID),
+    }
+
+
 @app.route('/add_user', methods=['POST'])
 def add_user():
     if not is_admin():
